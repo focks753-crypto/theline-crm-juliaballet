@@ -988,10 +988,10 @@ function ld(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}c
 function sv(k,v){
   try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}
   // Firebase에도 동기화 (개인 기기 전용 키는 제외)
-  const noSync=['og11_cv','og10_cu','og10_cc'];
+  const noSync=['jbog11_cv','jbog10_cu','jbog10_cc'];
   if(db && !noSync.includes(k)){
     const docKey=k.replace(/[^a-zA-Z0-9_]/g,'_');
-    db.collection('og_data').doc(docKey).set({value:JSON.stringify(v),ts:Date.now()}).catch(()=>{});
+    db.collection('jbog_data').doc(docKey).set({value:JSON.stringify(v),ts:Date.now()}).catch(()=>{});
   }
 }
 
@@ -1001,18 +1001,18 @@ function sv(k,v){
 async function pushAllToFirebase(){
   if(!db) throw new Error('Firebase가 연결되지 않았습니다. 인터넷 연결을 확인해주세요.');
   const items=[
-    {k:'og10_tr',v:trainers},
-    {k:'og10_sl',v:slots},
-    {k:'og10_mb',v:members},
-    {k:'og10_nt',v:notices},
-    {k:'og10_pkg',v:packages},
-    {k:'og10_cs',v:consultations},
-    {k:'og10_pr',v:products},
-    {k:'og10_rf',v:refunds},
+    {k:'jbog10_tr',v:trainers},
+    {k:'jbog10_sl',v:slots},
+    {k:'jbog10_mb',v:members},
+    {k:'jbog10_nt',v:notices},
+    {k:'jbog10_pkg',v:packages},
+    {k:'jbog10_cs',v:consultations},
+    {k:'jbog10_pr',v:products},
+    {k:'jbog10_rf',v:refunds},
   ];
   // 개별 순차 저장 (batch 대신)
   for(let i=0;i<items.length;i++){
-    await db.collection('og_data').doc(items[i].k).set({
+    await db.collection('jbog_data').doc(items[i].k).set({
       value:JSON.stringify(items[i].v),
       ts:Date.now()
     });
@@ -1028,9 +1028,9 @@ function getFirebaseStatus(){
 async function loadFromFirebase(){
   if(!db)return false;
   try{
-    const snap=await db.collection('og_data').get();
+    const snap=await db.collection('jbog_data').get();
     let hasData=false;
-    const skipKeys=['og11_cv','og10_cu','og10_cc'];
+    const skipKeys=['jbog11_cv','jbog10_cu','jbog10_cc'];
     const restores=[];
     snap.forEach(doc=>{
       if(skipKeys.includes(doc.id))return;
@@ -1041,7 +1041,7 @@ async function loadFromFirebase(){
       const lsGood=lsVal&&lsVal!=='[]'&&lsVal!=='null'&&lsVal.length>2;
       if(fsEmpty&&lsGood){
         // localStorage에 데이터 있는데 Firestore가 비어있으면 복구
-        restores.push(db.collection('og_data').doc(doc.id).set({value:lsVal,ts:Date.now()}).catch(()=>{}));
+        restores.push(db.collection('jbog_data').doc(doc.id).set({value:lsVal,ts:Date.now()}).catch(()=>{}));
         hasData=true;
       } else if(fsVal&&!fsEmpty){
         try{localStorage.setItem(doc.id,fsVal);hasData=true;}catch(e){}
@@ -1058,11 +1058,11 @@ async function loadFromFirebase(){
 // 실시간 리스너 - 다른 기기 변경사항 자동 반영
 function startRealtimeSync(){
   if(!db)return;
-  db.collection('og_data').onSnapshot(snap=>{
+  db.collection('jbog_data').onSnapshot(snap=>{
     snap.docChanges().forEach(change=>{
       if(change.type==='modified'||change.type==='added'){
         const data=change.doc.data();
-        const skipKeys2=['og11_cv','og10_cu','og10_cc'];
+        const skipKeys2=['jbog11_cv','jbog10_cu','jbog10_cc'];
         if(data&&data.value&&!skipKeys2.includes(change.doc.id)){
           const id=change.doc.id;
           const newVal=data.value;
@@ -1072,41 +1072,41 @@ function startRealtimeSync(){
           if(newEmpty&&existingGood)return; // 좋은 로컬 데이터를 빈값으로 덮어쓰지 않음
           try{localStorage.setItem(id,newVal);}catch(e){}
           // 화면 자동 갱신
-          if(id==='og10_tr'){trainers=ld('og10_tr',[]);updChip();if(document.getElementById('pg-adm').classList.contains('show'))renderAdm();}
-          else if(id==='og10_sl'){
-            slots=normSlots(ld('og10_sl',[]));
+          if(id==='jbog10_tr'){trainers=ld('jbog10_tr',[]);updChip();if(document.getElementById('pg-adm').classList.contains('show'))renderAdm();}
+          else if(id==='jbog10_sl'){
+            slots=normSlots(ld('jbog10_sl',[]));
             if(document.getElementById('pg-sch')&&document.getElementById('pg-sch').classList.contains('show'))renderTimes();
             // PC 캘린더 재렌더 (960px 이상 PC 모드)
             if(window.innerWidth>=960&&typeof renderPcContent==='function'){
               const pcg=document.getElementById('pcg');
               if(!pcg||pcg.style.display==='none')renderPcContent();
             }}
-          else if(id==='og10_mb'){
-            members=ld('og10_mb',[]);
+          else if(id==='jbog10_mb'){
+            members=ld('jbog10_mb',[]);
             if(document.getElementById('pg-mem')&&document.getElementById('pg-mem').classList.contains('show'))renderMem();
             if(window.innerWidth>=960&&typeof renderPcContent==='function'){
               const pcg=document.getElementById('pcg');
               if(!pcg||pcg.style.display==='none')renderPcContent();
             }}
-          else if(id==='og10_nt'){notices=ld('og10_nt',[]);if(document.getElementById('pg-not').classList.contains('show'))renderNotice();}
-          else if(id==='og10_pkg'){packages=ld('og10_pkg',[]);}
-          else if(id==='og10_pr'){
-            products=ld('og10_pr',[]);
+          else if(id==='jbog10_nt'){notices=ld('jbog10_nt',[]);if(document.getElementById('pg-not').classList.contains('show'))renderNotice();}
+          else if(id==='jbog10_pkg'){packages=ld('jbog10_pkg',[]);}
+          else if(id==='jbog10_pr'){
+            products=ld('jbog10_pr',[]);
             // PC 상품관리 화면 갱신
             if(window.innerWidth>=960&&typeof renderPcContent==='function'){
               const pcgp=document.getElementById('pcg');
               if(!pcgp||pcgp.style.display==='none')renderPcContent();
             }
           }
-          else if(id==='og10_rf'){refunds=ld('og10_rf',[]);}
-          else if(id==='og10_cs'){consultations=ld('og10_cs',[]);if(document.getElementById('pg-mem')&&document.getElementById('pg-mem').classList.contains('show'))renderMem();if(window.innerWidth>=960&&typeof renderPcContent==='function'){const pcgc=document.getElementById('pcg');if(!pcgc||pcgc.style.display==='none')renderPcContent();}} 
+          else if(id==='jbog10_rf'){refunds=ld('jbog10_rf',[]);}
+          else if(id==='jbog10_cs'){consultations=ld('jbog10_cs',[]);if(document.getElementById('pg-mem')&&document.getElementById('pg-mem').classList.contains('show'))renderMem();if(window.innerWidth>=960&&typeof renderPcContent==='function'){const pcgc=document.getElementById('pcg');if(!pcgc||pcgc.style.display==='none')renderPcContent();}} 
         }
       }
     });
   });
 }
 
-let trainers=ld('og10_tr',[]);
+let trainers=ld('jbog10_tr',[]);
 function normSlots(raw){
   return (Array.isArray(raw)?raw:[]).map(s=>{
     s=s||{};
@@ -1116,7 +1116,7 @@ function normSlots(raw){
     return s;
   });
 }
-let slots=normSlots(ld('og10_sl',[]));
+let slots=normSlots(ld('jbog10_sl',[]));
 // 유실된 트레이너 자동 보정: 현재 트레이너 목록에 없는(끊긴) 수업을 그 수업 회원의 담당자로 배정
 function autoAssignOrphanTrainers(){
   try{
@@ -1130,22 +1130,22 @@ function autoAssignOrphanTrainers(){
       const m = s.memberId ? mById[s.memberId] : null;  // 회원 없는 OT/차단은 건너뜀
       if(m && m.trainerId && tIds.has(m.trainerId)){ s.trainerId=m.trainerId; changed++; }
     });
-    if(changed>0){ try{sv('og10_sl',slots);}catch(e){localStorage.setItem('og10_sl',JSON.stringify(slots));} console.log('자동 트레이너 배정:',changed,'건'); }
+    if(changed>0){ try{sv('jbog10_sl',slots);}catch(e){localStorage.setItem('jbog10_sl',JSON.stringify(slots));} console.log('자동 트레이너 배정:',changed,'건'); }
     return changed;
   }catch(e){ console.warn('autoAssignOrphanTrainers',e); return 0; }
 }
-let members=ld('og10_mb',[]);
-let notices=ld('og10_nt',[]);
-let packages=ld('og10_pkg',[]);
-let consultations=ld('og10_cs',[]);
-let products=ld('og10_pr',[]);
-let refunds=ld('og10_rf',[]);
-let centerCode=localStorage.getItem('og10_cc')||'0000';
+let members=ld('jbog10_mb',[]);
+let notices=ld('jbog10_nt',[]);
+let packages=ld('jbog10_pkg',[]);
+let consultations=ld('jbog10_cs',[]);
+let products=ld('jbog10_pr',[]);
+let refunds=ld('jbog10_rf',[]);
+let centerCode=localStorage.getItem('jbog10_cc')||'0000';
 let codeVerified=false; // 매번 코드 입력 필요
-let curUser=ld('og10_cu',null);
+let curUser=ld('jbog10_cu',null);
 let weekOff=0;let calView='week';
-let groupClasses=ld('og10_gcl',[]);let grpSessMap={};let grpLoaded=false;let grpMonthOff=0;let grpV='month';let grpSelDate='';
-let grpBillings=ld('og10_gbl',[]);
+let groupClasses=ld('jbog10_gcl',[]);let grpSessMap={};let grpLoaded=false;let grpMonthOff=0;let grpV='month';let grpSelDate='';
+let grpBillings=ld('jbog10_gbl',[]);
 let calScale=1.0; // 캘린더 확대/축소 레벨 (0.6~2.5)
 let selDay=(new Date().getDay()+6)%7;
 let newColor=0;
@@ -1157,10 +1157,10 @@ const memSubTabOrder=['member','consult','chist'];let _lastMemSubTab=memSubTab; 
 // 초기 기본 직원 (없을 때만)
 if(!trainers.length){
   trainers=[{id:'t1',name:'관리자',role:'관리자',phone:'',saban:'0000',color:0}];
-  sv('og10_tr',trainers);
+  sv('jbog10_tr',trainers);
 }
 // curUser 유효성 검사
-if(curUser&&!trainers.find(t=>t.id===curUser)){curUser=null;sv('og10_cu',null);}
+if(curUser&&!trainers.find(t=>t.id===curUser)){curUser=null;sv('jbog10_cu',null);}
 
 function el(t,c){const e=document.createElement(t);if(c)e.className=c;return e;}
 function mk(t,c,tx){const e=el(t,c);if(tx!==undefined)e.textContent=tx;return e;}
@@ -1477,7 +1477,7 @@ function renderTimes(){
           const bk=cell.appendChild(el('div','wslot'));
           bk.style.cssText='background:repeating-linear-gradient(45deg,#1c1c1c,#1c1c1c 4px,#242424 4px,#242424 8px);color:#555;border-radius:3px;padding:2px 4px;font-size:9px;font-weight:700;overflow:hidden;';
           bk.textContent='차단';
-          bk.onclick=e=>{e.stopPropagation();if(confirm('이 시간 차단을 해제할까요?')){slots=slots.filter(x=>x.id!==s.id);sv('og10_sl',slots);renderTimes();}};
+          bk.onclick=e=>{e.stopPropagation();if(confirm('이 시간 차단을 해제할까요?')){slots=slots.filter(x=>x.id!==s.id);sv('jbog10_sl',slots);renderTimes();}};
           return;
         }
         const _durMin=s.type==='50분 수업'?50:s.type==='OT'?50:s.type==='25분 수업'?25:30;
@@ -1689,7 +1689,7 @@ function openSlotDetail(slotId){
       btns.appendChild(mk('button','shok','저장')).onclick=()=>{
         s.date=dtinp.value;s.time=tmsel.value;s.type=tysel.value;
         s.planId=plsel.value||null;s.memo=mo.value;
-        sv('og10_sl',slots);
+        sv('jbog10_sl',slots);
         if(s.bkId)updateCrmBk(s.bkId,{date:s.date,time:s.time,type:s.type,planId:s.planId||null,memo:s.memo});
         close();renderTimes();
       };
@@ -1703,7 +1703,7 @@ function openSlotDetail(slotId){
       btns.appendChild(mk('button','shno','취소')).onclick=close;
       btns.appendChild(mk('button','shok','저장')).onclick=()=>{
         s.date=dtinp.value;s.time=tmsel.value;s.type=tysel.value;s.memo=mo.value;
-        sv('og10_sl',slots);
+        sv('jbog10_sl',slots);
         if(s.bkId)updateCrmBk(s.bkId,{date:s.date,time:s.time,type:s.type,memo:s.memo});
         close();renderTimes();
       };
@@ -1714,19 +1714,19 @@ function openSlotDetail(slotId){
     delBtn.style.cssText='width:100%;padding:11px;border-radius:10px;border:1px solid #3d1a1a;background:transparent;color:#e05555;font-size:13px;cursor:pointer;margin-top:8px;';
     delBtn.onclick=()=>{
       if(!canEditSlot(s)){alert('본인 일정만 삭제할 수 있습니다.');return;}
-      if(confirm('이 일정을 삭제할까요?')){const _bkId=s.bkId;slots=slots.filter(x=>x.id!==s.id);sv('og10_sl',slots);if(_bkId)firebase.firestore().collection('og10_bk').doc(_bkId).delete().catch(()=>{});close();renderTimes();}
+      if(confirm('이 일정을 삭제할까요?')){const _bkId=s.bkId;slots=slots.filter(x=>x.id!==s.id);sv('jbog10_sl',slots);if(_bkId)firebase.firestore().collection('jbog10_bk').doc(_bkId).delete().catch(()=>{});close();renderTimes();}
     };
   });
 }
 
-// ── CRM 수업 등록 시 라인핏 og10_bk 동기화 ─────────────────────────────
+// ── CRM 수업 등록 시 라인핏 jbog10_bk 동기화 ─────────────────────────────
 function writeCrmBk(slot){
   if(!slot.memberId)return;
   const mb=members.find(m=>m.id===slot.memberId);if(!mb)return;
   const plan=slot.planId?(mb.plans||[]).find(p=>p.id===slot.planId):null;
   const tr=trainers.find(t=>t.id===slot.trainerId);
   const dur=(slot.type||'').includes('50')?50:25;
-  firebase.firestore().collection('og10_bk').add({
+  firebase.firestore().collection('jbog10_bk').add({
     memberId:slot.memberId,memberName:mb.name||'',
     trainerId:slot.trainerId||'',trainerName:tr?tr.name:'',
     date:slot.date,time:slot.time,
@@ -1737,11 +1737,11 @@ function writeCrmBk(slot){
     memo:slot.memo||'',
     requestedAt:firebase.firestore.FieldValue.serverTimestamp(),
     slotId:slot.id
-  }).then(ref=>{slot.bkId=ref.id;sv('og10_sl',slots);}).catch(e=>console.warn('writeCrmBk',e));
+  }).then(ref=>{slot.bkId=ref.id;sv('jbog10_sl',slots);}).catch(e=>console.warn('writeCrmBk',e));
 }
 function updateCrmBk(bkId,fields){
   if(!bkId)return;
-  firebase.firestore().collection('og10_bk').doc(bkId).update(fields).catch(e=>console.warn('updateCrmBk',e));
+  firebase.firestore().collection('jbog10_bk').doc(bkId).update(fields).catch(e=>console.warn('updateCrmBk',e));
 }
 
 function openAddSheet(time){
@@ -1823,7 +1823,7 @@ function openAddSheet(time){
       const planId=(!mbId||ty==='OT'||ty==='상담')?null:selectedPlanId;
       if(mbId&&ty!=='OT'&&ty!=='상담'&&!planId){alert('권종을 선택해주세요.');return;}
       const _newSlot={id:'s'+Date.now(),trainerId:tid,memberId:mbId,planId,date:key,time:tm,type:ty,memo:mo.value.trim()};
-      slots.push(_newSlot);sv('og10_sl',slots);
+      slots.push(_newSlot);sv('jbog10_sl',slots);
       if(mbId)writeCrmBk(_newSlot);
       close();renderTimes();
     };
@@ -2005,10 +2005,10 @@ function renderConCard(ct,c,today,inToday){
     if((c.history||[]).length>0){const hb=acts.appendChild(mk('button','con-btn','이력 '+c.history.length));hb.style.cssText='border-color:#3dc87a;color:#3dc87a;padding:8px 14px;border-radius:8px;border:1px solid;background:var(--bg2);font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;';hb.onclick=()=>viewConsultHistory(c.id);}
     const trBtn=acts.appendChild(mk('button','con-btn','트레이너 지정'));trBtn.style.cssText='border-color:#ab47bc;color:#ce93d8;padding:8px 14px;border-radius:8px;border:1px solid;background:var(--bg2);font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;';trBtn.onclick=()=>openAssignTrainer(c.id);
   } else {
-    acts.appendChild(mk('button','con-btn','재등록')).onclick=()=>{c.status='pending';sv('og10_cs',consultations);renderMem();};
+    acts.appendChild(mk('button','con-btn','재등록')).onclick=()=>{c.status='pending';sv('jbog10_cs',consultations);renderMem();};
     const trBtn=acts.appendChild(mk('button','con-btn','트레이너 지정'));trBtn.style.cssText='border-color:#ab47bc;color:#ce93d8;padding:8px 14px;border-radius:8px;border:1px solid;background:var(--bg2);font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;';trBtn.onclick=()=>openAssignTrainer(c.id);
   }
-  const delBtn=acts.appendChild(mk('button','con-del','×'));delBtn.onclick=()=>{if(confirm(c.name+' 삭제?')){consultations=consultations.filter(x=>x.id!==c.id);sv('og10_cs',consultations);renderMem();}};
+  const delBtn=acts.appendChild(mk('button','con-del','×'));delBtn.onclick=()=>{if(confirm(c.name+' 삭제?')){consultations=consultations.filter(x=>x.id!==c.id);sv('jbog10_cs',consultations);renderMem();}};
 }
 
 function openAddConsult(){
@@ -2028,7 +2028,7 @@ function openAddConsult(){
       const name=ni.value.trim();if(!name){alert('이름을 입력해주세요.');return;}
       consultations.unshift({id:'c'+Date.now(),name,phone:pi.value.trim(),memo:mi.value.trim(),
         inflow:ii.value,contactDate:di.value,status:'pending',createdAt:Date.now(),history:[]});
-      sv('og10_cs',consultations);close();renderMem();
+      sv('jbog10_cs',consultations);close();renderMem();
     };
     setTimeout(()=>ni.focus(),200);
   });
@@ -2050,7 +2050,7 @@ function openEditConsult(cid){
     btns.appendChild(mk('button','shok','저장')).onclick=()=>{
       const name=ni.value.trim();if(!name){alert('이름을 입력해주세요.');return;}
       c.name=name;c.phone=pi.value.trim();c.inflow=ii.value;c.memo=mi.value.trim();c.contactDate=di.value;
-      sv('og10_cs',consultations);close();renderMem();
+      sv('jbog10_cs',consultations);close();renderMem();
     };
   });
 }
@@ -2128,7 +2128,7 @@ function renderConsultHistory(ct){
       // 삭제 버튼
       const acts=card.appendChild(el('div',''));acts.style.cssText='display:flex;gap:6px;margin-top:10px;';
       const editBtn=acts.appendChild(mk('button','con-btn','수정'));editBtn.onclick=()=>openEditConsult(c.id);
-      const delBtn=acts.appendChild(mk('button','con-del','×'));delBtn.onclick=()=>{if(confirm(c.name+' 삭제?')){consultations=consultations.filter(x=>x.id!==c.id);sv('og10_cs',consultations);renderMem();}};
+      const delBtn=acts.appendChild(mk('button','con-del','×'));delBtn.onclick=()=>{if(confirm(c.name+' 삭제?')){consultations=consultations.filter(x=>x.id!==c.id);sv('jbog10_cs',consultations);renderMem();}};
     });
   }
 }
@@ -2177,7 +2177,7 @@ function openConsultHistory(cid, action){
         c.history=c.history||[];
         c.history.push({type:'missed',memo:mi.value.trim(),ts:Date.now()});
         c.status='pending';c.contactDate=di.value;
-        sv('og10_cs',consultations);close();renderMem();
+        sv('jbog10_cs',consultations);close();renderMem();
       };
     } else {
       const btns=sheet.appendChild(el('div','shbtns'));
@@ -2186,14 +2186,14 @@ function openConsultHistory(cid, action){
         c.history=c.history||[];
         c.history.push({type:'done',memo:mi.value.trim(),ts:Date.now()});
         c.status='done';c.doneAt=Date.now();
-        sv('og10_cs',consultations);close();renderMem();
+        sv('jbog10_cs',consultations);close();renderMem();
       };
       // 목록에서 삭제 옵션
       const delBtn=sheet.appendChild(mk('button','','완료 처리 후 목록에서 삭제'));
       delBtn.style.cssText='width:100%;padding:11px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--t3);font-size:13px;cursor:pointer;margin-top:8px;';
       delBtn.onclick=()=>{
         c.history=c.history||[];c.history.push({type:'done',memo:mi.value.trim(),ts:Date.now()});
-        consultations=consultations.filter(x=>x.id!==c.id);sv('og10_cs',consultations);close();renderMem();
+        consultations=consultations.filter(x=>x.id!==c.id);sv('jbog10_cs',consultations);close();renderMem();
       };
     }
   });
@@ -2246,11 +2246,11 @@ function openAssignTrainer(cid){
       const regTs=rdi.value?(()=>{const d=new Date(rdi.value);d.setHours(new Date().getHours(),new Date().getMinutes());return d.getTime();})():Date.now();
       plan.addedAt=regTs;
       members.push({id:'m'+Date.now(),trainerId:selTrId,name:c.name,phone:c.phone||'',plans:[{id:'pl'+Date.now(),...plan}],registeredAt:regTs});
-      sv('og10_mb',members);consultations=consultations.filter(x=>x.id!==c.id);sv('og10_cs',consultations);
+      sv('jbog10_mb',members);consultations=consultations.filter(x=>x.id!==c.id);sv('jbog10_cs',consultations);
       const trName=trainers.find(t=>t.id===selTrId);close();alert(c.name+'님이 '+(trName?trName.name:'')+'트레이너 회원으로 등록되었습니다!');renderMem();
     };
     const trOnlyBtn=sheet.appendChild(mk('button','','트레이너만 지정'));trOnlyBtn.style.cssText='width:100%;padding:11px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--t3);font-size:13px;cursor:pointer;margin-top:8px;';
-    trOnlyBtn.onclick=()=>{if(!selTrId){alert('트레이너를 선택해주세요.');return;}if(confirm('트레이너를 지정하고 상담 목록에서 삭제할까요?')){consultations=consultations.filter(x=>x.id!==c.id);sv('og10_cs',consultations);close();renderMem();}else{c.assignedTrainer=selTrId;sv('og10_cs',consultations);close();renderMem();}};
+    trOnlyBtn.onclick=()=>{if(!selTrId){alert('트레이너를 선택해주세요.');return;}if(confirm('트레이너를 지정하고 상담 목록에서 삭제할까요?')){consultations=consultations.filter(x=>x.id!==c.id);sv('jbog10_cs',consultations);close();renderMem();}else{c.assignedTrainer=selTrId;sv('jbog10_cs',consultations);close();renderMem();}};
   });
 }
 
@@ -2421,7 +2421,7 @@ function renderMemView(ct){
     const topBtns=top.appendChild(el('div'));topBtns.style.cssText='display:flex;gap:5px;align-items:center;';
     topBtns.appendChild(mk('button','memeditbtn','회원수정')).onclick=()=>openEditMember(m.id);
     topBtns.appendChild(mk('button','memplanbtb','+ 현장판매')).onclick=()=>openPcPayment(m.id,null,null);
-    topBtns.appendChild(mk('button','mdel','×')).onclick=()=>{if(confirm(m.name+' 삭제?')){members=members.filter(x=>x.id!==m.id);sv('og10_mb',members);renderMem();}};
+    topBtns.appendChild(mk('button','mdel','×')).onclick=()=>{if(confirm(m.name+' 삭제?')){members=members.filter(x=>x.id!==m.id);sv('jbog10_mb',members);renderMem();}};
     const minfo=card.appendChild(el('div',''));minfo.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;';
     if(m.phone)minfo.appendChild(mk('div','mphone',m.phone));
     if(m.inflow){const ib=minfo.appendChild(mk('div','',m.inflow));ib.style.cssText='font-size:11px;color:#ce93d8;background:rgba(171,71,188,.12);padding:2px 7px;border-radius:5px;font-weight:600;';}
@@ -2459,7 +2459,7 @@ function openEditMember(memberId){
     btns.appendChild(mk('button','shno','취소')).onclick=close;
     btns.appendChild(mk('button','shok','저장')).onclick=()=>{
       const name=ni.value.trim();if(!name){alert('이름을 입력해주세요.');return;}
-      mb.name=name;mb.phone=pi.value.trim();mb.inflow=ii.value;mb.payment=pyi.value;sv('og10_mb',members);close();renderMem();
+      mb.name=name;mb.phone=pi.value.trim();mb.inflow=ii.value;mb.payment=pyi.value;sv('jbog10_mb',members);close();renderMem();
     };
   });
 }
@@ -2490,7 +2490,7 @@ function openAddMem(tid){
       const regTs=rdi.value?(()=>{const d=new Date(rdi.value);d.setHours(new Date().getHours(),new Date().getMinutes());return d.getTime();})():Date.now();
       plan.addedAt=regTs;plan.paymentDate=rdi.value;plan.paymentMethod=pi2.value;
       members.push({id:'m'+Date.now(),trainerId:tid,name,phone:pi.value.trim(),inflow:ii.value,payment:pi2.value,plans:[{id:'pl'+Date.now(),...plan}],registeredAt:regTs});
-      sv('og10_mb',members);close();renderMem();
+      sv('jbog10_mb',members);close();renderMem();
     };
   });
 }
@@ -2535,11 +2535,11 @@ function openEditPlan(memberId,planId){
       p.totalPrice=totalPrice;p.pricePerSession=Math.round(totalPrice/sessions);
       p.paymentMethod=pymSel.value;
       if(dateInput.value){p.paymentDate=dateInput.value;const d=new Date(dateInput.value);d.setHours(new Date().getHours(),new Date().getMinutes());p.addedAt=d.getTime();}
-      sv('og10_mb',members);close();renderMem();
+      sv('jbog10_mb',members);close();renderMem();
     };
     const delBtn=sheet.appendChild(mk('button','','이 수업권 삭제'));
     delBtn.style.cssText='width:100%;padding:11px;border-radius:10px;border:1px solid #3d1a1a;background:transparent;color:#e05555;font-size:13px;cursor:pointer;margin-top:8px;';
-    delBtn.onclick=()=>{if(confirm('삭제할까요?')){mb.plans=mb.plans.filter(x=>x.id!==planId);sv('og10_mb',members);close();renderMem();}};
+    delBtn.onclick=()=>{if(confirm('삭제할까요?')){mb.plans=mb.plans.filter(x=>x.id!==planId);sv('jbog10_mb',members);close();renderMem();}};
   });
 }
 
@@ -2562,7 +2562,7 @@ function openAddPlan(memberId){
       const regTs2=rdi2.value?(()=>{const d=new Date(rdi2.value);d.setHours(new Date().getHours(),new Date().getMinutes());return d.getTime();})():Date.now();
       plan.addedAt=regTs2;plan.paymentDate=rdi2.value;plan.paymentMethod=pymSel.value;
       mb.plans=mb.plans||[];mb.plans.push({id:'pl'+Date.now(),...plan});
-      sv('og10_mb',members);close();renderMem();
+      sv('jbog10_mb',members);close();renderMem();
     };
   });
 }
@@ -2637,9 +2637,9 @@ function renderAdmStaff(ct){
     const sbtns=card.appendChild(el('div','stbtns'));
     sbtns.appendChild(mk('button','steditbtn','수정')).onclick=()=>openEditStaff(tr.id);
     sbtns.appendChild(mk('button','steditbtn','Off 설정')).onclick=()=>openTrainerOffSheet(tr.id);
-    sbtns.appendChild(mk('button','stdel','×')).onclick=()=>{if(confirm(tr.name+' 삭제?')){trainers=trainers.filter(x=>x.id!==tr.id);sv('og10_tr',trainers);renderAdm();}};
+    sbtns.appendChild(mk('button','stdel','×')).onclick=()=>{if(confirm(tr.name+' 삭제?')){trainers=trainers.filter(x=>x.id!==tr.id);sv('jbog10_tr',trainers);renderAdm();}};
   });
-  ct.appendChild(mk('button','pwbtn','관리자 비밀번호 변경')).onclick=()=>{const np=prompt('새 비밀번호:');if(np&&np.trim()){localStorage.setItem('og10_pw',np.trim());alert('변경되었습니다.');}};
+  ct.appendChild(mk('button','pwbtn','관리자 비밀번호 변경')).onclick=()=>{const np=prompt('새 비밀번호:');if(np&&np.trim()){localStorage.setItem('jbog10_pw',np.trim());alert('변경되었습니다.');}};
 }
 
 function openEditStaff(trId){
@@ -2664,7 +2664,7 @@ function openEditStaff(trId){
       if(!saban){alert('사번을 입력해주세요.');return;}
       if(trainers.some(t=>t.id!==trId&&t.saban===saban)){alert('이미 사용 중인 사번입니다.');return;}
       tr.name=name;tr.role=ri.value;tr.phone=pi.value.trim();tr.saban=saban;tr.color=parseInt(ci.value);tr.showInMem=showChk.checked;
-      sv('og10_tr',trainers);if(curUser===trId)updChip();close();renderAdm();
+      sv('jbog10_tr',trainers);if(curUser===trId)updChip();close();renderAdm();
     };
   });
 }
@@ -2675,13 +2675,13 @@ function addStaff(){
   const saban=(document.getElementById('st-s').value||'').trim();
   if(!name){alert('이름을 입력해주세요.');return;}if(!saban){alert('사번을 입력해주세요.');return;}
   if(trainers.some(t=>t.saban===saban)){alert('이미 사용 중인 사번입니다.');return;}
-  trainers.push({id:'t'+Date.now(),name,role,phone,saban,color});sv('og10_tr',trainers);renderAdm();
+  trainers.push({id:'t'+Date.now(),name,role,phone,saban,color});sv('jbog10_tr',trainers);renderAdm();
 }
 
 function renderAdmBookings(ct){
   ct.appendChild(mk('div','sec','예약 신청 현황'));
   const db2=firebase.firestore();
-  db2.collection('og10_bk').orderBy('requestedAt','desc').limit(50).get().then(snap=>{
+  db2.collection('jbog10_bk').orderBy('requestedAt','desc').limit(50).get().then(snap=>{
     ct.innerHTML='';
     ct.appendChild(mk('div','sec','예약 신청 현황'));
     const docs=snap.docs.map(d=>({id:d.id,...d.data()})).filter(b=>b.source!=='crm');
@@ -2707,7 +2707,7 @@ function renderAdmBookings(ct){
         const apvBtn=btns.appendChild(el('button'));
         apvBtn.style.cssText='flex:1;padding:11px 0;border-radius:10px;border:none;background:rgba(61,200,122,.15);color:#3dc87a;font-size:14px;font-weight:700;cursor:pointer;';
         apvBtn.textContent='✓ 확정';
-        apvBtn.onclick=()=>{if(confirm(b.memberName+' 예약을 확정하시겠습니까?')){db2.collection('og10_bk').doc(b.id).update({status:'approved'}).then(()=>{if(!slots.find(s=>s.bkId===b.id)){slots.push({id:'s'+Date.now(),bkId:b.id,trainerId:b.trainerId,memberId:b.memberId,planId:b.planId||null,date:b.date,time:b.time,type:b.duration>=50?'50분 수업':'25분 수업',memo:b.memo||''});sv('og10_sl',slots);}renderAdm();});}};
+        apvBtn.onclick=()=>{if(confirm(b.memberName+' 예약을 확정하시겠습니까?')){db2.collection('jbog10_bk').doc(b.id).update({status:'approved'}).then(()=>{if(!slots.find(s=>s.bkId===b.id)){slots.push({id:'s'+Date.now(),bkId:b.id,trainerId:b.trainerId,memberId:b.memberId,planId:b.planId||null,date:b.date,time:b.time,type:b.duration>=50?'50분 수업':'25분 수업',memo:b.memo||''});sv('jbog10_sl',slots);}renderAdm();});}};
         const rBtn=btns.appendChild(el('button'));
         rBtn.style.cssText='flex:1;padding:11px 0;border-radius:10px;border:none;background:rgba(248,113,113,.12);color:#f87171;font-size:14px;font-weight:700;cursor:pointer;';
         rBtn.textContent='✗ 거절';
@@ -2725,7 +2725,7 @@ function renderAdmBookings(ct){
             confirmBtn.textContent='거절 확정';
             confirmBtn.onclick=()=>{
               const reason=ta.value.trim();
-              db2.collection('og10_bk').doc(b.id).update({status:'rejected',rejectReason:reason||''}).then(()=>{close();renderAdm();});
+              db2.collection('jbog10_bk').doc(b.id).update({status:'rejected',rejectReason:reason||''}).then(()=>{close();renderAdm();});
             };
           });
         };
@@ -2737,7 +2737,7 @@ function renderAdmBookings(ct){
 function openTrainerOffSheet(trId){
   const tr=trainers.find(t=>t.id===trId);if(!tr)return;
   const db2=firebase.firestore();
-  const docRef=db2.collection('og10_avail').doc(trId);
+  const docRef=db2.collection('jbog10_avail').doc(trId);
   docRef.get().then(doc=>{
     const data=doc.exists?doc.data():{};
     const workHours=data.workHours||{};
@@ -2838,9 +2838,9 @@ function renderAdmPkg(ct){
       const pkg={id:'p_mob_'+Date.now(),duration:prod.duration,sessions:prod.sessions,price:prod.price};
       packages.push(pkg);
       prod.fromPkg=pkg.id;
-      sv('og10_pkg',packages);
+      sv('jbog10_pkg',packages);
     }
-    sv('og10_pr',products);ni.value='';priceI.value='';sessI.value='';renderAdm();
+    sv('jbog10_pr',products);ni.value='';priceI.value='';sessI.value='';renderAdm();
   };
 
   // 등록된 상품 목록
@@ -2859,7 +2859,7 @@ function renderAdmPkg(ct){
       if(confirm(p.name+' 삭제?')){
         if(p.fromPkg)packages=packages.filter(x=>x.id!==p.fromPkg);
         products=products.filter(x=>x.id!==p.id);
-        sv('og10_pkg',packages);sv('og10_pr',products);renderAdm();
+        sv('jbog10_pkg',packages);sv('jbog10_pr',products);renderAdm();
       }
     };
   });
@@ -2878,7 +2878,7 @@ function renderAdmPkg(ct){
     card.appendChild(mk('button','pkgdel','삭제')).onclick=()=>{
       if(confirm(p.name+' 삭제?')){
         products=products.filter(x=>x.id!==p.id);
-        sv('og10_pr',products);renderAdm();
+        sv('jbog10_pr',products);renderAdm();
       }
     };
   });
@@ -2927,7 +2927,7 @@ function renderAdmAvail(ct){
     clearTimeout(saveTimer);
     saveTimer=setTimeout(()=>{
       const finalWh={};dayKeys.forEach(dk=>{const n=normRanges(w[dk]);finalWh[dk]=(n===false)?false:(n||[]);});
-      db2.collection('og10_avail').doc(selTrId).set({workHours:finalWh,weeklyOff:wo})
+      db2.collection('jbog10_avail').doc(selTrId).set({workHours:finalWh,weeklyOff:wo})
         .then(()=>{const t=document.createElement('div');t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(22,30,40,.97);color:#e6edf3;padding:10px 22px;border-radius:20px;font-size:14px;font-weight:600;z-index:9999;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.5);';t.textContent='✅ 자동 저장됐습니다.';document.body.appendChild(t);setTimeout(()=>t.remove(),2000);})
         .catch(()=>{const t=document.createElement('div');t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(248,113,113,.95);color:#fff;padding:10px 22px;border-radius:20px;font-size:14px;font-weight:600;z-index:9999;pointer-events:none;';t.textContent='❌ 저장 실패';document.body.appendChild(t);setTimeout(()=>t.remove(),2500);});
     },800);
@@ -3105,7 +3105,7 @@ function renderAdmAvail(ct){
 
   function loadAvail(){
     buildAll();
-    db2.collection('og10_avail').doc(selTrId).get().then(doc=>{
+    db2.collection('jbog10_avail').doc(selTrId).get().then(doc=>{
       if(!ct.isConnected)return;
       const d=doc.exists?doc.data():{};
       const rawWh=d.workHours||{};
@@ -3128,11 +3128,11 @@ function renderAdmCode(ct){
   ci.style.cssText='width:100%;padding:12px 14px;border:1px solid var(--bd2);border-radius:10px;background:var(--bg2);color:var(--t1);font-size:15px;';
   form.appendChild(mk('button','sbtn','코드 변경')).onclick=()=>{
     const val=ci.value.trim();if(!/^\d{4}$/.test(val)){alert('4자리 숫자를 입력해주세요.');return;}
-    let centerCode=val;localStorage.setItem('og10_cc',val);alert('센터 코드가 변경되었습니다.');ci.value='';
+    let centerCode=val;localStorage.setItem('jbog10_cc',val);alert('센터 코드가 변경되었습니다.');ci.value='';
   };
   const rb=form.appendChild(mk('button','','접속 초기화 (모든 기기)'));
   rb.style.cssText='width:100%;padding:11px;border-radius:9px;border:1px solid var(--bd2);background:transparent;color:var(--t3);font-size:13px;cursor:pointer;';
-  rb.onclick=()=>{if(confirm('모든 기기에서 센터 코드를 다시 입력하게 됩니다.')){localStorage.setItem('og11_cv','0');alert('완료.');}};
+  rb.onclick=()=>{if(confirm('모든 기기에서 센터 코드를 다시 입력하게 됩니다.')){localStorage.setItem('jbog11_cv','0');alert('완료.');}};
   ct.appendChild(mk('div','sec','Firebase 실시간 동기화'));
   const fbBox=ct.appendChild(el('div','sform'));
   fbBox.appendChild(mk('div','','데이터가 다른 기기에 보이지 않으면 아래 버튼을 눌러주세요.')).style.cssText='font-size:12px;color:#666;';
@@ -3150,7 +3150,7 @@ function markAllRead(){
   const tr=trainers.find(t=>t.id===curUser);
   let changed=false;
   notices.forEach(n=>{n.reads=n.reads||[];if(!n.reads.find(r=>r.userId===curUser)){n.reads.push({userId:curUser,name:tr?tr.name:'?',ts:Date.now()});changed=true;}});
-  if(changed)sv('og10_nt',notices);
+  if(changed)sv('jbog10_nt',notices);
 }
 
 function renderNotice(){
@@ -3176,7 +3176,7 @@ function renderNotice(){
     const reads=n.reads||[];
     const rb=acts.appendChild(mk('div','read-badge','읽음 '+reads.length+'명'));
     if(isAdminUser()&&reads.length>0){rb.classList.add('clickable');rb.onclick=e=>{e.stopPropagation();const existing=card.querySelector('.read-list');if(existing){existing.remove();return;}const rl=card.appendChild(el('div','read-list'));reads.forEach(r=>{rl.appendChild(mk('div','read-item',r.name+' · '+fmtTs(r.ts)));});};}
-    if(isAdminUser()){const db=acts.appendChild(mk('button','ncdel','삭제'));db.onclick=e=>{e.stopPropagation();if(confirm('삭제?')){notices=notices.filter(x=>x.id!==n.id);sv('og10_nt',notices);renderNotice();}};}
+    if(isAdminUser()){const db=acts.appendChild(mk('button','ncdel','삭제'));db.onclick=e=>{e.stopPropagation();if(confirm('삭제?')){notices=notices.filter(x=>x.id!==n.id);sv('jbog10_nt',notices);renderNotice();}};}
     preview.appendChild(mk('div','notice-title',n.title||n.body.slice(0,30)+(n.body.length>30?'...':'')));
     const expRow=preview.appendChild(el('div','notice-expand-row'));
     expRow.appendChild(mk('span','notice-expand-hint',n.body?'내용 보기':''));
@@ -3209,7 +3209,7 @@ function openComposeNotice(){
       if(!title&&!body){alert('제목 또는 내용을 입력해주세요.');return;}
       const tr=trainers.find(t=>t.id===curUser);
       notices.unshift({id:'n'+Date.now(),title:title||'(제목 없음)',body,images:[...pendingImages],author:tr?tr.name:'관리자',authorId:curUser,pinned:pc.checked,ts:Date.now(),reads:[]});
-      sv('og10_nt',notices);close();renderNotice();
+      sv('jbog10_nt',notices);close();renderNotice();
     };
     setTimeout(()=>ti.focus(),200);
   });
@@ -3655,8 +3655,8 @@ function renderMobRefundHist(ct){
       cancelBtn.onclick=()=>{
         if(!confirm(r.memberName+' 환불을 취소하고 수업권을 복구할까요?'))return;
         const mb2=members.find(m=>m.id===r.memberId);
-        if(mb2){const plan2=(mb2.plans||[]).find(p=>p.id===r.planId);if(plan2&&plan2.refunded){plan2.refunded=false;plan2.sessions=r.usedSessions+r.remainSessions;delete plan2.refundedAt;delete plan2.refundAmount;sv('og10_mb',members);}}
-        refunds=refunds.filter(x=>x.id!==r.id);sv('og10_rf',refunds);
+        if(mb2){const plan2=(mb2.plans||[]).find(p=>p.id===r.planId);if(plan2&&plan2.refunded){plan2.refunded=false;plan2.sessions=r.usedSessions+r.remainSessions;delete plan2.refundedAt;delete plan2.refundAmount;sv('jbog10_mb',members);}}
+        refunds=refunds.filter(x=>x.id!==r.id);sv('jbog10_rf',refunds);
         alert('환불이 취소되고 수업권이 복구되었습니다.');renderSales();
       };
     }
@@ -3782,12 +3782,12 @@ function dlNoWeekXLSX(){
 }
 
 function openLogin(cb){
-  if(curUser){if(confirm('로그아웃 하시겠습니까?')){curUser=null;sv('og10_cu',null);updChip();mvTr=null;renderTimes();if(document.getElementById('pg-mem').classList.contains('show'))renderMem();if(document.getElementById('pg-adm').classList.contains('show'))renderAdm();}return;}
+  if(curUser){if(confirm('로그아웃 하시겠습니까?')){curUser=null;sv('jbog10_cu',null);updChip();mvTr=null;renderTimes();if(document.getElementById('pg-mem').classList.contains('show'))renderMem();if(document.getElementById('pg-adm').classList.contains('show'))renderAdm();}return;}
   showSheet(function(sheet,close){
     sheet.appendChild(el('div','shdl'));sheet.appendChild(mk('h3','','로그인'));sheet.appendChild(mk('div','shsub','이름 선택 후 사번 입력'));
     let selId=null;
     const nml=sheet.appendChild(el('div','nmlist'));
-    const latestTr=ld('og10_tr',trainers);if(latestTr.length>trainers.length)trainers=latestTr;
+    const latestTr=ld('jbog10_tr',trainers);if(latestTr.length>trainers.length)trainers=latestTr;
     const sortedTr=[...trainers].sort((a,b)=>(b.role==='관리자'?1:0)-(a.role==='관리자'?1:0));
     if(sortedTr.length<=1){const hint=nml.appendChild(mk('div','',''));hint.style.cssText='font-size:12px;color:#666;text-align:center;padding:8px;border:1px solid #333;border-radius:8px;margin-bottom:8px;line-height:1.5;';hint.textContent='직원이 1명만 보이면 관리자 로그인 후 [관리]→[설정]에서 동기화 코드를 가져오세요.';}
     sortedTr.forEach(tr=>{
@@ -3801,7 +3801,7 @@ function openLogin(cb){
     sbi.onkeydown=e=>{if(e.key==='Enter')doLogin();};
     sheet.appendChild(mk('div','login-hint','로그인 정보는 이 기기에 자동으로 저장됩니다'));
     const btns=sheet.appendChild(el('div','shbtns'));btns.appendChild(mk('button','shno','취소')).onclick=close;btns.appendChild(mk('button','shok','로그인')).onclick=doLogin;
-    function doLogin(){if(!selId){alert('이름을 선택해주세요.');return;}const tr=trainers.find(t=>t.id===selId);if(!tr)return;if(sbi.value.trim()!==tr.saban){alert('사번이 올바르지 않습니다.');return;}curUser=selId;sv('og10_cu',curUser);close();updChip();renderTimes();if(cb)cb();}
+    function doLogin(){if(!selId){alert('이름을 선택해주세요.');return;}const tr=trainers.find(t=>t.id===selId);if(!tr)return;if(sbi.value.trim()!==tr.saban){alert('사번이 올바르지 않습니다.');return;}curUser=selId;sv('jbog10_cu',curUser);close();updChip();renderTimes();if(cb)cb();}
   });
 }
 
@@ -3921,12 +3921,12 @@ function dlSalesCSV(rows,total){
     const gate=document.getElementById('gate');const gateHint=gate?gate.querySelector('.gate-hint'):null;
     if(gateHint)gateHint.textContent='데이터 불러오는 중...';
     const hasFirebaseData=await loadFromFirebase();
-    trainers=ld('og10_tr',[]);slots=normSlots(ld('og10_sl',[]));members=ld('og10_mb',[]);notices=ld('og10_nt',[]);packages=ld('og10_pkg',[]);consultations=ld('og10_cs',[]);products=ld('og10_pr',[]);refunds=ld('og10_rf',[]);
-    let centerCode=localStorage.getItem('og10_cc')||'0000';
+    trainers=ld('jbog10_tr',[]);slots=normSlots(ld('jbog10_sl',[]));members=ld('jbog10_mb',[]);notices=ld('jbog10_nt',[]);packages=ld('jbog10_pkg',[]);consultations=ld('jbog10_cs',[]);products=ld('jbog10_pr',[]);refunds=ld('jbog10_rf',[]);
+    let centerCode=localStorage.getItem('jbog10_cc')||'0000';
     let codeVerified=false;
-    curUser=ld('og10_cu',null);
-    if(!trainers.length){trainers=[{id:'t1',name:'관리자',role:'관리자',phone:'',saban:'0000',color:0}];try{localStorage.setItem('og10_tr',JSON.stringify(trainers));}catch(e){}}/* 보호: 기본 관리자는 로컬에만, 파이어베이스에 덮어쓰지 않음 */
-    if(curUser&&!trainers.find(t=>t.id===curUser)){curUser=null;sv('og10_cu',null);}
+    curUser=ld('jbog10_cu',null);
+    if(!trainers.length){trainers=[{id:'t1',name:'관리자',role:'관리자',phone:'',saban:'0000',color:0}];try{localStorage.setItem('jbog10_tr',JSON.stringify(trainers));}catch(e){}}/* 보호: 기본 관리자는 로컬에만, 파이어베이스에 덮어쓰지 않음 */
+    if(curUser&&!trainers.find(t=>t.id===curUser)){curUser=null;sv('jbog10_cu',null);}
     autoAssignOrphanTrainers(); // 유실 트레이너 자동 복원(회원 담당자 기준)
     /* 보호: 파이어베이스가 비어 보여도 로컬 기본값을 통째로 밀어넣지 않음(데이터 덮어쓰기 방지). 필요 시 설정에서 수동 동기화 사용 */
     // if(!hasFirebaseData&&db&&trainers.length>0){await pushAllToFirebase();}
@@ -4667,7 +4667,7 @@ function renderPcHome(ct,acts){
     trc.innerHTML=trRevHtml+'</div>';
 
     const sc=g3.appendChild(_mk('div','pc-card pc-card-anim'));
-    const _mgoal=ld('og10_mgoal',2000000);
+    const _mgoal=ld('jbog10_mgoal',2000000);
     const _pct=Math.min(mRev/_mgoal*100,100).toFixed(1);
     sc.innerHTML='<div class="pc-card-ttl">이번달 수업권 매출</div>'
       +'<div style="font-size:28px;font-weight:800;color:#e2e8f0;margin:8px 0 4px;">'+mRev.toLocaleString()+'원</div>'
@@ -4679,7 +4679,7 @@ function renderPcHome(ct,acts){
       if(v===null)return;
       const n=parseInt(v.replace(/,/g,''));
       if(isNaN(n)||n<=0){alert('올바른 금액을 입력해주세요.');return;}
-      sv('og10_mgoal',n);renderPcContent();
+      sv('jbog10_mgoal',n);renderPcContent();
     };
   }
 }
@@ -4836,7 +4836,7 @@ function renderRegStep2(box,close,reg){
       gender:reg.gender,birthdate:reg.birthdate,address:reg.address,email:reg.email,
       inflow:reg.inflow,purpose:reg.purpose,notes:reg.notes,
       plans:[],registeredAt:Date.now()};
-    members.push(newMb);sv('og10_mb',members);
+    members.push(newMb);sv('jbog10_mb',members);
     close();pcDetailMbId=newMb.id;
     // 바로 이용권 추가 화면 열기
     setTimeout(()=>openPcPayment(newMb.id,null,null),100);
@@ -4993,7 +4993,7 @@ function renderMbDetailModal(box,close,mbId){
     const delB2=btmRow.appendChild(document.createElement('button'));
     delB2.style.cssText='padding:11px 14px;border-radius:9px;border:1px solid rgba(248,113,113,.3);background:transparent;color:#f87171;font-size:13px;cursor:pointer;font-family:inherit;';
     delB2.textContent='삭제';
-    delB2.onclick=()=>{if(confirm(mb.name+' 회원을 삭제하시겠습니까?')){members=members.filter(m=>m.id!==mbId);sv('og10_mb',members);close();renderMem();}};
+    delB2.onclick=()=>{if(confirm(mb.name+' 회원을 삭제하시겠습니까?')){members=members.filter(m=>m.id!==mbId);sv('jbog10_mb',members);close();renderMem();}};
     return;
   }
   // 2열: 왼쪽 정보 + 오른쪽 콘텐츠
@@ -5024,7 +5024,7 @@ function renderMbDetailModal(box,close,mbId){
   const delMbBtn=left.appendChild(document.createElement('button'));
   delMbBtn.style.cssText='width:100%;padding:10px;border-radius:8px;border:1px solid rgba(248,113,113,.3);background:transparent;color:#f87171;font-size:12px;font-weight:600;cursor:pointer;margin-top:6px;font-family:inherit;';
   delMbBtn.textContent='회원 삭제';
-  delMbBtn.onclick=()=>{if(confirm(mb.name+' 회원을 삭제하시겠습니까?')){members=members.filter(m=>m.id!==mbId);sv('og10_mb',members);close();renderPcContent();}};
+  delMbBtn.onclick=()=>{if(confirm(mb.name+' 회원을 삭제하시겠습니까?')){members=members.filter(m=>m.id!==mbId);sv('jbog10_mb',members);close();renderPcContent();}};
 
   // 오른쪽
   const right=box.appendChild(document.createElement('div'));
@@ -5189,7 +5189,7 @@ function openPcPayment(mbId,parentBox,parentClose){
           paymentMethod:cPayMethod,startDate:null,endDate:null,
           paymentDate:now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0'),
           addedAt:now.getTime()};
-        mb.plans=mb.plans||[];mb.plans.push(plan);sv('og10_mb',members);
+        mb.plans=mb.plans||[];mb.plans.push(plan);sv('jbog10_mb',members);
         close();closePayModal();
         alert('✅ 결제 완료!\n'+name+' '+price.toLocaleString()+'원 ('+cPayMethod+')');
         if(parentBox&&parentClose){renderMbDetailModal(parentBox,parentClose,mbId);}
@@ -5392,7 +5392,7 @@ function openPcPayment(mbId,parentBox,parentClose){
       const plan={id:'pl'+Date.now(),productName:gc.name,productType:'group',
         groupClassId:gc.id,pricePerSession:pps,startDate:selStartDate,status:'active',
         paymentMethod:selPayMethod,paymentDate:todayStr,addedAt:now.getTime()};
-      mb.plans=mb.plans||[];mb.plans.push(plan);sv('og10_mb',members);
+      mb.plans=mb.plans||[];mb.plans.push(plan);sv('jbog10_mb',members);
       const firstMonth=selStartDate.slice(0,7);
       const bill={id:'bill'+Date.now(),memberId:mb.id,memberName:mb.name,planId:plan.id,
         groupClassId:gc.id,groupClassName:gc.name,
@@ -5413,7 +5413,7 @@ function openPcPayment(mbId,parentBox,parentClose){
       pricePerSession:prod.sessions?Math.round(selPrice/prod.sessions):selPrice,
       paymentMethod:selPayMethod,startDate:prod.type==='membership'?selStartDate:null,endDate:prod.type==='membership'?selEndDate:null,
       paymentDate:todayStr,addedAt:now.getTime()};
-    mb.plans=mb.plans||[];mb.plans.push(plan);sv('og10_mb',members);
+    mb.plans=mb.plans||[];mb.plans.push(plan);sv('jbog10_mb',members);
     closePayModal();
     alert('✅ 결제 완료!\n'+prod.name+' '+selPrice.toLocaleString()+'원 ('+selPayMethod+')');
     // 회원 상세로 돌아가기
@@ -5707,7 +5707,7 @@ function renderPcSales(ct,acts){
                   }
                 }
                 mb.plans=(mb.plans||[]).filter(p=>{const d=new Date(p.addedAt||0);const ds=d.toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'});return!(ds===r.date&&p.totalPrice===r.amount&&!p.refunded);});
-                sv('og10_mb',members);
+                sv('jbog10_mb',members);
               }
               alert('매출이 취소되었습니다.');renderPcContent();
             };
@@ -5719,7 +5719,7 @@ function renderPcSales(ct,acts){
             delBtn.onclick=()=>{
               if(!confirm('[관리자] 이 환불 기록을 삭제하시겠습니까?'))return;
               refunds=refunds.filter(x=>x.memberName!==r.mbName||x.refundAmount!==Math.abs(r.amount));
-              sv('og10_rf',refunds);renderPcContent();
+              sv('jbog10_rf',refunds);renderPcContent();
             };
           }
         }
@@ -5757,7 +5757,7 @@ function renderPcBookings(ct,acts){
   const tbody=tbl.appendChild(document.createElement('tbody'));
   const loadRow=tbody.appendChild(document.createElement('tr'));
   const ltd=loadRow.appendChild(document.createElement('td'));ltd.colSpan=9;ltd.style.cssText='text-align:center;padding:32px;color:#4a5068;';ltd.textContent='로딩 중...';
-  db2.collection('og10_bk').orderBy('requestedAt','desc').limit(100).get().then(snap=>{
+  db2.collection('jbog10_bk').orderBy('requestedAt','desc').limit(100).get().then(snap=>{
     tbody.innerHTML='';
     const docs=snap.docs.map(d=>({id:d.id,...d.data()})).filter(b=>b.source!=='crm');
     if(!docs.length){const tr3=tbody.appendChild(document.createElement('tr'));const td=tr3.appendChild(document.createElement('td'));td.colSpan=9;td.style.cssText='text-align:center;padding:48px;color:#4a5068;';td.textContent='회원 예약 신청이 없습니다.';return;}
@@ -5783,7 +5783,7 @@ function renderPcBookings(ct,acts){
         const apvBtn=actTd.appendChild(document.createElement('button'));
         apvBtn.style.cssText='padding:5px 12px;border-radius:6px;border:none;background:rgba(61,200,122,.15);color:#3dc87a;font-size:12px;font-weight:700;cursor:pointer;margin-right:6px;';
         apvBtn.textContent='✓ 확정';
-        apvBtn.onclick=()=>{if(confirm(b.memberName+' 예약을 확정하시겠습니까?')){db2.collection('og10_bk').doc(b.id).update({status:'approved'}).then(()=>{if(!slots.find(s=>s.bkId===b.id)){slots.push({id:'s'+Date.now(),bkId:b.id,trainerId:b.trainerId,memberId:b.memberId,planId:b.planId||null,date:b.date,time:b.time,type:b.duration>=50?'50분 수업':'25분 수업',memo:b.memo||''});sv('og10_sl',slots);}renderPcContent();});}};
+        apvBtn.onclick=()=>{if(confirm(b.memberName+' 예약을 확정하시겠습니까?')){db2.collection('jbog10_bk').doc(b.id).update({status:'approved'}).then(()=>{if(!slots.find(s=>s.bkId===b.id)){slots.push({id:'s'+Date.now(),bkId:b.id,trainerId:b.trainerId,memberId:b.memberId,planId:b.planId||null,date:b.date,time:b.time,type:b.duration>=50?'50분 수업':'25분 수업',memo:b.memo||''});sv('jbog10_sl',slots);}renderPcContent();});}};
         const rejBtn=actTd.appendChild(document.createElement('button'));
         rejBtn.style.cssText='padding:5px 12px;border-radius:6px;border:none;background:rgba(248,113,113,.15);color:#f87171;font-size:12px;font-weight:700;cursor:pointer;';
         rejBtn.textContent='✗ 거절';
@@ -5802,7 +5802,7 @@ function renderPcBookings(ct,acts){
             confirmBtn.style.background='rgba(248,113,113,.2)';confirmBtn.style.color='#f87171';confirmBtn.style.border='1px solid rgba(248,113,113,.3)';
             confirmBtn.onclick=()=>{
               const reason=ta.value.trim();
-              db2.collection('og10_bk').doc(b.id).update({status:'rejected',rejectReason:reason||''}).then(()=>{close();renderPcContent();});
+              db2.collection('jbog10_bk').doc(b.id).update({status:'rejected',rejectReason:reason||''}).then(()=>{close();renderPcContent();});
             };
           },{});
         };
@@ -5820,8 +5820,8 @@ function renderPcBookings(ct,acts){
 // ── 문자발송 (헬스 회원권 만료임박 안내) ──────────────────────────────────
 const SMS_EXPIRE_DAYS=15; // 만료 며칠 전부터 발송대상에 포함할지
 const SMS_TPL_DEFAULT='[더라인짐] {이름}님, 회원권이 {잔여일}일 후({만료일}) 만료됩니다. 연장 문의 부탁드립니다 :)';
-function getSmsTpl(){return ld('og10_sms_tpl',SMS_TPL_DEFAULT);}
-function setSmsTpl(v){sv('og10_sms_tpl',v);}
+function getSmsTpl(){return ld('jbog10_sms_tpl',SMS_TPL_DEFAULT);}
+function setSmsTpl(v){sv('jbog10_sms_tpl',v);}
 function fillSmsTpl(tpl,m,daysLeft,endDate){
   return tpl.replaceAll('{이름}',m.name||'').replaceAll('{잔여일}',String(daysLeft)).replaceAll('{만료일}',endDate||'');
 }
@@ -5835,7 +5835,7 @@ function getSmsTargets(){
     return{m,endDate:mp.endDate,daysLeft:dl};
   }).filter(Boolean).sort((a,b)=>a.daysLeft-b.daysLeft);
 }
-function getSmsLog(){return ld('og10_sms_log',[]);}
+function getSmsLog(){return ld('jbog10_sms_log',[]);}
 function todayStrKST(){const n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');}
 function wasSmsSentToday(memberId){
   const today=todayStrKST();
@@ -5938,7 +5938,7 @@ function renderPcSettings(ct,acts){
       const atd=row.appendChild(document.createElement('td'));
       atd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'수정'})).onclick=()=>openPcEditStaff(tr2.id);
       const delBtn=atd.appendChild(document.createElement('button'));delBtn.style.cssText='padding:6px 10px;border-radius:6px;border:1px solid rgba(248,113,113,.3);background:transparent;color:#f87171;font-size:12px;cursor:pointer;margin-left:6px;';delBtn.textContent='삭제';
-      delBtn.onclick=()=>{if(confirm(tr2.name+' 직원을 삭제하시겠습니까?')){trainers=trainers.filter(t=>t.id!==tr2.id);sv('og10_tr',trainers);renderPcContent();}};
+      delBtn.onclick=()=>{if(confirm(tr2.name+' 직원을 삭제하시겠습니까?')){trainers=trainers.filter(t=>t.id!==tr2.id);sv('jbog10_tr',trainers);renderPcContent();}};
     });
     if(!trainers.length){const tr3=tbody.appendChild(document.createElement('tr'));const td=tr3.appendChild(document.createElement('td'));td.colSpan=5;td.style.cssText='text-align:center;padding:32px;color:#2a2d45;';td.textContent='등록된 직원이 없습니다.';}
   } else {
@@ -5976,7 +5976,7 @@ function renderPcSettings(ct,acts){
       if(p.type==='pt'&&p.sessions)card.appendChild(Object.assign(document.createElement('div'),{textContent:p.sessions+'회 · 회당 '+Math.round(p.price/p.sessions).toLocaleString()+'원'})).style.cssText='font-size:11px;color:#4a5068;margin-top:4px;';
       const actRow=card.appendChild(document.createElement('div'));actRow.style.cssText='display:flex;gap:6px;margin-top:12px;';
       actRow.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'수정'})).onclick=()=>openPcEditProduct(p.id);
-      actRow.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'삭제'})).onclick=()=>{if(confirm(p.name+' 삭제?')){if(p.fromPkg){packages=packages.filter(x=>x.id!==p.fromPkg);sv('og10_pkg',packages);}products=products.filter(x=>x.id!==p.id);sv('og10_pr',products);renderPcContent();}};
+      actRow.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'삭제'})).onclick=()=>{if(confirm(p.name+' 삭제?')){if(p.fromPkg){packages=packages.filter(x=>x.id!==p.fromPkg);sv('jbog10_pkg',packages);}products=products.filter(x=>x.id!==p.id);sv('jbog10_pr',products);renderPcContent();}};
     });
   }
 }
@@ -6002,7 +6002,7 @@ function openPcEditProduct(prodId,onSaved){
         const name=nameI.value.trim();const price=parseMoney(priceI.value);
         if(!name){alert('상품명을 입력해주세요.');return;}if(!price){alert('가격을 입력해주세요.');return;}
         p.name=name;p.price=price;p.sessions=parseInt(sessS.value);p.duration=parseInt(durS.value);
-        sv('og10_pr',products);close();
+        sv('jbog10_pr',products);close();
         if(onSaved)onSaved();else renderPcContent();
       };
     } else {
@@ -6013,7 +6013,7 @@ function openPcEditProduct(prodId,onSaved){
         const name=nameI.value.trim();const price=parseMoney(priceI.value);
         if(!name){alert('상품명을 입력해주세요.');return;}if(!price){alert('가격을 입력해주세요.');return;}
         p.name=name;p.price=price;
-        sv('og10_pr',products);close();
+        sv('jbog10_pr',products);close();
         if(onSaved)onSaved();else renderPcContent();
       };
     }
@@ -6059,7 +6059,7 @@ function openPcCreateProduct(onCreated){
         groupClassId:selType==='group'?grpS.value:undefined,
         sessionsPerMonth:selType==='group'?parseInt(grpSpmI.value):undefined,
         createdAt:Date.now()};
-      products.push(prod);sv('og10_pr',products);close();if(onCreated)onCreated();
+      products.push(prod);sv('jbog10_pr',products);close();if(onCreated)onCreated();
     };
   },{});
 }
@@ -6086,7 +6086,7 @@ function openPcEditMemberModal(mbId,parentBox,parentClose){
     btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
       const name=nameI.value.trim();if(!name){alert('이름을 입력해주세요.');return;}
       mb.name=name;mb.phone=phoneI.value.trim();mb.gender=genI.value;mb.inflow=infI.value;mb.trainerId=trI.value;mb.purpose=purI.value;mb.birthdate=bdI.value;mb.address=adI.value.trim();mb.notes=noTA.value.trim();
-      sv('og10_mb',members);close();
+      sv('jbog10_mb',members);close();
       if(parentBox&&parentClose)renderMbDetailModal(parentBox,parentClose,mbId);else renderPcContent();
     };
   },{wide:true});
@@ -6110,7 +6110,7 @@ function openPcConsultHistory(cid,action,cb){
       c.history=c.history||[];c.history.push({type:action,memo:mT.value.trim(),ts:Date.now()});
       if(isDone){c.status='done';c.doneAt=Date.now();}
       else{c.status='pending';if(dI&&dI.value)c.contactDate=dI.value;}
-      sv('og10_cs',consultations);close();if(cb)cb();
+      sv('jbog10_cs',consultations);close();if(cb)cb();
     };
   },{});
 }
@@ -6149,7 +6149,7 @@ function openPcAssignTrainer(cid,cb){
     });
     const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';
     btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
-    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'지정만'})).onclick=()=>{c.assignedTrainer=selTrId;sv('og10_cs',consultations);close();if(cb)cb();};
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'지정만'})).onclick=()=>{c.assignedTrainer=selTrId;sv('jbog10_cs',consultations);close();if(cb)cb();};
   },{wide:true});
 }
 
@@ -6180,7 +6180,7 @@ function renderConsultTable(container,list){
     }
     const editBtn=actTd.appendChild(document.createElement('button'));editBtn.className='pc-tbtn';editBtn.style.cssText='padding:5px 10px;font-size:11px;margin-right:4px;';editBtn.textContent='수정';editBtn.onclick=()=>openPcEditConsult(c.id,()=>renderPcContent());
     const trBtn=actTd.appendChild(document.createElement('button'));trBtn.className='pc-tbtn';trBtn.style.cssText='padding:5px 10px;font-size:11px;border-color:#ab47bc;color:#ce93d8;margin-right:4px;';trBtn.textContent='지정';trBtn.onclick=()=>openPcAssignTrainer(c.id,()=>renderPcContent());
-    const delBtn=actTd.appendChild(document.createElement('button'));delBtn.style.cssText='padding:5px 8px;font-size:11px;border-radius:6px;border:1px solid #1e2026;background:transparent;color:#f87171;cursor:pointer;';delBtn.textContent='×';delBtn.onclick=()=>{if(confirm(c.name+' 삭제?')){consultations=consultations.filter(x=>x.id!==c.id);sv('og10_cs',consultations);renderPcContent();}};
+    const delBtn=actTd.appendChild(document.createElement('button'));delBtn.style.cssText='padding:5px 8px;font-size:11px;border-radius:6px;border:1px solid #1e2026;background:transparent;color:#f87171;cursor:pointer;';delBtn.textContent='×';delBtn.onclick=()=>{if(confirm(c.name+' 삭제?')){consultations=consultations.filter(x=>x.id!==c.id);sv('jbog10_cs',consultations);renderPcContent();}};
   });
   if(!list.length){const tr2=tbody.appendChild(document.createElement('tr'));const td=tr2.appendChild(document.createElement('td'));td.colSpan=7;td.style.cssText='text-align:center;padding:20px;color:#2a2d45;font-size:12px;';td.textContent='없음';}
 }
@@ -6246,7 +6246,7 @@ function renderPcConsultHist(ct,acts){
     }else{hTd.textContent='-';hTd.style.color='#2a2d45';}
     const actTd=row.appendChild(document.createElement('td'));actTd.style.whiteSpace='nowrap';
     actTd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'수정'})).style.cssText='padding:5px 10px;font-size:11px;margin-right:4px;';actTd.lastChild.onclick=()=>openPcEditConsult(c.id,()=>renderPcContent());
-    const db=actTd.appendChild(document.createElement('button'));db.style.cssText='padding:5px 8px;font-size:11px;border-radius:6px;border:1px solid #1e2026;background:transparent;color:#f87171;cursor:pointer;';db.textContent='×';db.onclick=()=>{if(confirm(c.name+' 삭제?')){consultations=consultations.filter(x=>x.id!==c.id);sv('og10_cs',consultations);renderPcContent();}};
+    const db=actTd.appendChild(document.createElement('button'));db.style.cssText='padding:5px 8px;font-size:11px;border-radius:6px;border:1px solid #1e2026;background:transparent;color:#f87171;cursor:pointer;';db.textContent='×';db.onclick=()=>{if(confirm(c.name+' 삭제?')){consultations=consultations.filter(x=>x.id!==c.id);sv('jbog10_cs',consultations);renderPcContent();}};
   });
   if(!list.length){const tr2=tbody.appendChild(document.createElement('tr'));const td=tr2.appendChild(document.createElement('td'));td.colSpan=9;td.style.cssText='text-align:center;padding:32px;color:#2a2d45;';td.textContent='상담 내역이 없습니다.';}
 }
@@ -6267,7 +6267,7 @@ function openPcAddConsult(cb){
     btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'등록'})).onclick=()=>{
       const name=nI.value.trim();if(!name){alert('이름을 입력해주세요.');return;}
       consultations.unshift({id:'c'+Date.now(),name,phone:pI.value.trim(),inflow:iS.value,memo:mT.value.trim(),contactDate:dI.value,status:'pending',createdAt:Date.now(),history:[]});
-      sv('og10_cs',consultations);close();if(cb)cb();
+      sv('jbog10_cs',consultations);close();if(cb)cb();
     };
   },{wide:true});
 }
@@ -6306,7 +6306,7 @@ function openPcEditConsult(cid,cb){
     btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
       c.name=nI.value.trim()||c.name;c.phone=pI.value.trim();c.inflow=iS.value;c.memo=mT.value.trim();c.contactDate=dI.value;
       histInputs.forEach(({idx,ta})=>{if(c.history[idx])c.history[idx].memo=ta.value.trim();});
-      sv('og10_cs',consultations);close();if(cb)cb();
+      sv('jbog10_cs',consultations);close();if(cb)cb();
     };
   },{wide:true});
 }
@@ -6327,7 +6327,7 @@ function renderMbPlanCard(container, mb, p, box, close) {
     if(p.status!=='cancelled'){
       const cancelBtn=top.appendChild(Object.assign(document.createElement('button'),{textContent:'해지'}));
       cancelBtn.style.cssText='padding:4px 10px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:transparent;color:#f87171;font-size:11px;cursor:pointer;';
-      cancelBtn.onclick=()=>{if(!confirm(p.productName+' 구독을 해지하시겠습니까?'))return;p.status='cancelled';p.cancelledDate=_grpFmtD(new Date());sv('og10_mb',members);renderMbDetailModal(box,close,mb.id);};
+      cancelBtn.onclick=()=>{if(!confirm(p.productName+' 구독을 해지하시겠습니까?'))return;p.status='cancelled';p.cancelledDate=_grpFmtD(new Date());sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);};
     }
     const info=card.appendChild(document.createElement('div'));info.style.cssText='font-size:11px;color:#4a5068;line-height:1.9;';
     const today=new Date();const curMonth=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0');
@@ -6403,7 +6403,7 @@ function renderMbPlanCard(container, mb, p, box, close) {
         p.paidAmount = newAmt;
         p.pricePerSession = (p.sessions&&p.sessions>0)?Math.round(newAmt/p.sessions):0;
         p.paymentMethod = pymSel.value;
-        sv('og10_mb', members);
+        sv('jbog10_mb', members);
         c2();
         const newDate = new Date(di.value).toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'});
         info.innerHTML = '결제: ' + newAmt.toLocaleString() + '원' + (p.paymentMethod ? ' · ' + p.paymentMethod : '') + ' · ' + newDate + '<br>'
@@ -6537,12 +6537,12 @@ function openPcRefund(mb, plan, parentBox, parentClose) {
         processedDate: new Date().toLocaleDateString('ko-KR', {year:'2-digit',month:'2-digit',day:'2-digit'}),
       };
       refunds.unshift(record);
-      sv('og10_rf', refunds);
+      sv('jbog10_rf', refunds);
 
       // 수업권 비활성화 (잔여 0으로)
       plan.refunded = true; plan.refundedAt = Date.now(); plan.refundAmount = amt;
       plan.sessions = used; // 잔여 0 처리
-      sv('og10_mb', members);
+      sv('jbog10_mb', members);
 
       close();
       alert('✅ ' + (refType==='refund'?'환불':'양도') + ' 처리 완료!\n' + amt.toLocaleString() + '원');
@@ -6608,8 +6608,8 @@ function renderPcRefundHist(ct, acts) {
         if(!confirm(r.memberName+' 환불을 취소하고 수업권을 복구하시겠습니까?'))return;
         // 환불 취소: plan 복구
         const mb=members.find(m=>m.id===r.memberId);
-        if(mb){const plan=(mb.plans||[]).find(p=>p.id===r.planId);if(plan&&plan.refunded){plan.refunded=false;plan.sessions=r.usedSessions+r.remainSessions;delete plan.refundedAt;delete plan.refundAmount;sv('og10_mb',members);}}
-        refunds=refunds.filter(x=>x.id!==r.id);sv('og10_rf',refunds);
+        if(mb){const plan=(mb.plans||[]).find(p=>p.id===r.planId);if(plan&&plan.refunded){plan.refunded=false;plan.sessions=r.usedSessions+r.remainSessions;delete plan.refundedAt;delete plan.refundAmount;sv('jbog10_mb',members);}}
+        refunds=refunds.filter(x=>x.id!==r.id);sv('jbog10_rf',refunds);
         alert('환불이 취소되고 수업권이 복구되었습니다.');renderPcContent();
       };
     }
@@ -6652,12 +6652,12 @@ function openPcStaffModal(tr2, onSave) {
       if (tr2) {
         tr2.name = name; tr2.role = roleI.value.trim(); tr2.phone = phoneI.value.trim(); tr2.color = selColor;
         if (sabanI.value) tr2.saban = sabanI.value;
-        sv('og10_tr', trainers);
+        sv('jbog10_tr', trainers);
       } else {
         const saban = sabanI.value;
         if (!saban) {alert('로그인 번호를 입력해주세요.'); return;}
         trainers.push({id:'tr'+Date.now(), name, role:roleI.value.trim(), phone:phoneI.value.trim(), color:selColor, saban});
-        sv('og10_tr', trainers);
+        sv('jbog10_tr', trainers);
       }
       close(); renderPcContent(); updatePcUser();
     };
@@ -6670,7 +6670,7 @@ function openPcEditStaff(trId) { const tr2 = trainers.find(t => t.id === trId); 
 function openPcLogin() {
   if (curUser) {
     if (confirm('로그아웃 하시겠습니까?')) {
-      curUser = null; sv('og10_cu', null); const _pn=document.getElementById('pc-nav');if(_pn){_pn._built=false;_pn.innerHTML='';} updatePcUser(); initPcNav(); renderPcContent();
+      curUser = null; sv('jbog10_cu', null); const _pn=document.getElementById('pc-nav');if(_pn){_pn._built=false;_pn.innerHTML='';} updatePcUser(); initPcNav(); renderPcContent();
     }
     return;
   }
@@ -6691,7 +6691,7 @@ function openPcLogin() {
       const tr2 = trainers.find(t => t.id === trS.value);
       if (!tr2) {errDiv.textContent = '담당자를 선택해주세요.'; return;}
       if (tr2.saban && pinI.value !== tr2.saban) {errDiv.textContent = '로그인 번호가 올바르지 않습니다.'; pinI.value=''; return;}
-      curUser = tr2.id; sv('og10_cu', curUser); const _pn2=document.getElementById('pc-nav');if(_pn2){_pn2._built=false;_pn2.innerHTML='';} close(); updatePcUser(); initPcNav(); renderPcContent();
+      curUser = tr2.id; sv('jbog10_cu', curUser); const _pn2=document.getElementById('pc-nav');if(_pn2){_pn2._built=false;_pn2.innerHTML='';} close(); updatePcUser(); initPcNav(); renderPcContent();
     }
     const btns = box.appendChild(document.createElement('div')); btns.className = 'pcm-btns'; btns.style.marginTop = '20px';
     btns.appendChild(Object.assign(document.createElement('button'), {className:'pcm-btn-sec', textContent:'취소'})).onclick = close;
@@ -6757,13 +6757,13 @@ function ensureGrpBillings(){
       }
     });
   });
-  sv('og10_gbl',grpBillings);
+  sv('jbog10_gbl',grpBillings);
 }
 async function svGrpBilling(bill){
   try{
-    if(db){if(bill.id&&!bill.id.startsWith('bill'))await db.collection('og10_gbl').doc(bill.id).set(bill);else{const r=await db.collection('og10_gbl').add(bill);bill.id=r.id;}}
+    if(db){if(bill.id&&!bill.id.startsWith('bill'))await db.collection('jbog10_gbl').doc(bill.id).set(bill);else{const r=await db.collection('jbog10_gbl').add(bill);bill.id=r.id;}}
     const i=grpBillings.findIndex(b=>b.id===bill.id);if(i>=0)grpBillings[i]=bill;else grpBillings.push(bill);
-    sv('og10_gbl',grpBillings);
+    sv('jbog10_gbl',grpBillings);
   }catch(e){alert('저장 실패');}
 }
 function getGrpMonthRange(){
@@ -6778,31 +6778,31 @@ function getGrpMonthRange(){
 async function loadGrpData(){
   if(grpLoaded)return;
   try{
-    if(db){const snap=await db.collection('og10_gc').get();groupClasses=snap.docs.map(d=>({id:d.id,...d.data()}));sv('og10_gcl',groupClasses);}
+    if(db){const snap=await db.collection('jbog10_gc').get();groupClasses=snap.docs.map(d=>({id:d.id,...d.data()}));sv('jbog10_gcl',groupClasses);}
     grpLoaded=true;
-  }catch(e){groupClasses=ld('og10_gcl',[]);grpLoaded=true;}
+  }catch(e){groupClasses=ld('jbog10_gcl',[]);grpLoaded=true;}
 }
 async function loadGrpSessRange(dates){
   if(!db||!dates.length)return;
   try{
-    const snap=await db.collection('og10_gs').where('date','>=',dates[0]).where('date','<=',dates[dates.length-1]).get();
+    const snap=await db.collection('jbog10_gs').where('date','>=',dates[0]).where('date','<=',dates[dates.length-1]).get();
     snap.docs.forEach(d=>{const s={id:d.id,...d.data()};grpSessMap[s.classId+'_'+s.date]=s;});
   }catch(e){}
 }
 async function svGrpClass(gc){
   const isNew=!gc.id;
   try{
-    if(db){if(isNew){const r=await db.collection('og10_gc').add(gc);gc.id=r.id;}else await db.collection('og10_gc').doc(gc.id).set(gc);}
+    if(db){if(isNew){const r=await db.collection('jbog10_gc').add(gc);gc.id=r.id;}else await db.collection('jbog10_gc').doc(gc.id).set(gc);}
     else if(isNew)gc.id='gc'+Date.now();
     const i=groupClasses.findIndex(g=>g.id===gc.id);
     if(i>=0)groupClasses[i]=gc;else groupClasses.push(gc);
-    sv('og10_gcl',groupClasses);
+    sv('jbog10_gcl',groupClasses);
   }catch(e){alert('저장 실패');}
   return gc.id;
 }
 async function svGrpSess(s){
   try{
-    if(db){if(s.id)await db.collection('og10_gs').doc(s.id).set(s);else{const r=await db.collection('og10_gs').add(s);s.id=r.id;}}
+    if(db){if(s.id)await db.collection('jbog10_gs').doc(s.id).set(s);else{const r=await db.collection('jbog10_gs').add(s);s.id=r.id;}}
     grpSessMap[s.classId+'_'+s.date]=s;
   }catch(e){alert('저장 실패');}
 }
@@ -6900,7 +6900,7 @@ function _renderGrpBilling(ct){
             mb.plans=mb.plans||[];
             const exists=mb.plans.find(p=>p.grpBillId===bill.id);
             if(!exists)mb.plans.push(salePlan);
-            sv('og10_mb',members);
+            sv('jbog10_mb',members);
           }
           await svGrpBilling(bill);renderPcContent();
         };
@@ -6911,7 +6911,7 @@ function _renderGrpBilling(ct){
           if(!confirm('결제 완료를 취소하고 미수로 변경하시겠습니까?'))return;
           bill.paid=false;bill.paidDate=null;bill.paymentMethod=null;
           // 매출 레코드 제거
-          if(mb){mb.plans=(mb.plans||[]).filter(p=>p.grpBillId!==bill.id);sv('og10_mb',members);}
+          if(mb){mb.plans=(mb.plans||[]).filter(p=>p.grpBillId!==bill.id);sv('jbog10_mb',members);}
           await svGrpBilling(bill);renderPcContent();
         };
       }
@@ -6946,12 +6946,12 @@ function _renderGrpBilling(ct){
       const cb=atd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'해지'}));
       cb.style.cssText='padding:4px 10px;font-size:11px;color:#f87171;border-color:#f87171;';
       cb.onclick=()=>{if(!confirm(mb.name+' 님의 '+gcName+' 구독을 해지하시겠습니까?'))return;
-        plan.status='cancelled';plan.cancelledDate=_grpFmtD(new Date());sv('og10_mb',members);renderPcContent();};
+        plan.status='cancelled';plan.cancelledDate=_grpFmtD(new Date());sv('jbog10_mb',members);renderPcContent();};
     } else {
       const rb=atd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'재등록'}));
       rb.style.cssText='padding:4px 10px;font-size:11px;color:#3dc87a;border-color:#3dc87a;';
       rb.onclick=()=>{if(!confirm(mb.name+' 님의 '+gcName+' 구독을 재등록하시겠습니까?\n('+_grpFmtD(new Date())+' 부터 재개)'))return;
-        plan.status='active';plan.cancelledDate=null;plan.startDate=_grpFmtD(new Date());sv('og10_mb',members);ensureGrpBillings();renderPcContent();};
+        plan.status='active';plan.cancelledDate=null;plan.startDate=_grpFmtD(new Date());sv('jbog10_mb',members);ensureGrpBillings();renderPcContent();};
     }
   });
 }
@@ -7510,7 +7510,7 @@ function renderPcAnalytics(ct){
       const dtb=dtbl.appendChild(document.createElement('tbody'));
       function renderRows(){
         dtb.innerHTML='';
-        const noregNotes=ld('og10_noreg_notes',{});
+        const noregNotes=ld('jbog10_noreg_notes',{});
         const kw=anaNoregKw.trim();
         const rows=d.noregList.filter(({m})=>{
           if(anaNoregTr&&m.trainerId!==anaNoregTr)return false;
@@ -7561,7 +7561,7 @@ function renderPcAnalytics(ct){
   };
 }
 function openNoregEditModal(mId,mName,cb){
-  const cur=ld('og10_noreg_notes',{});
+  const cur=ld('jbog10_noreg_notes',{});
   const note=cur[mId]||{flirted:false,flirtedDate:'',memo:''};
   const fieldStyle='width:100%;padding:11px 14px;border:1px solid #2a3050;border-radius:10px;background:#0d1117;color:#e2e8f0;font-size:14px;margin-bottom:16px;box-sizing:border-box;font-family:inherit;';
   const lblStyle='font-size:11px;color:#8892b0;margin-bottom:6px;font-weight:700;letter-spacing:.5px;';
@@ -7590,12 +7590,12 @@ function openNoregEditModal(mId,mName,cb){
     saveBtn.textContent='저장';saveBtn.className='pc-tbtn pri';
     saveBtn.style.cssText='flex:1;padding:12px;';
     saveBtn.onclick=()=>{
-      const cur2=ld('og10_noreg_notes',{});
+      const cur2=ld('jbog10_noreg_notes',{});
       cur2[mId]=cur2[mId]||{};
       cur2[mId].flirted=chk.checked;
       cur2[mId].flirtedDate=di.value;
       cur2[mId].memo=ta.value.trim();
-      sv('og10_noreg_notes',cur2);
+      sv('jbog10_noreg_notes',cur2);
       c2();
       if(cb)cb(cur2[mId]);
     };
@@ -7635,7 +7635,7 @@ function renderMobAnalytics(ct){
   if(!d.byTr.length){const e=ct.appendChild(document.createElement('div'));e.style.cssText='text-align:center;padding:40px;color:#6b7494;';e.textContent='등록 데이터가 없습니다.';}
   // 미재등록 회원
   if(d.noregList.length){
-    const noregNotes=ld('og10_noreg_notes',{});
+    const noregNotes=ld('jbog10_noreg_notes',{});
     const sec2=ct.appendChild(document.createElement('div'));
     sec2.style.cssText='margin:16px 12px 6px;font-size:12px;font-weight:700;color:#818cf8;letter-spacing:1px;';
     sec2.textContent='소진 후 미재등록 회원 ('+d.noregList.length+'명)';
@@ -7737,7 +7737,7 @@ function dlSessionsXLSX(){
 // ── 환불내역 엑셀 다운로드 ───────────────────────────────────────────────
 function dlBookingsXLSX(){
   if(typeof XLSX==='undefined'){alert('잠시 후 다시 시도해주세요.');return;}
-  firebase.firestore().collection('og10_bk').orderBy('requestedAt','desc').limit(500).get().then(snap=>{
+  firebase.firestore().collection('jbog10_bk').orderBy('requestedAt','desc').limit(500).get().then(snap=>{
     const docs=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(!docs.length){alert('예약 데이터가 없습니다.');return;}
     const statusMap={pending:'대기',approved:'확정',rejected:'거절'};
@@ -7797,7 +7797,7 @@ function pcgLogin(){
   const err=document.getElementById('pcg-err');
   if(!inp)return;
   const val=inp.value;
-  const cc=localStorage.getItem('og10_cc')||'0000';
+  const cc=localStorage.getItem('jbog10_cc')||'0000';
   if(val===cc||val==='0000'){
     codeVerified=true;
     const gate=document.getElementById('gate');
@@ -7889,8 +7889,8 @@ function openPcDayView(ds){
         delBtn.onclick=()=>{
           if(!confirm((mb?mb.name:'이 일정')+'을 삭제하시겠습니까?'))return;
           const _dvBkId=s.bkId;
-          slots=slots.filter(x=>x.id!==s.id);sv('og10_sl',slots);
-          if(_dvBkId)firebase.firestore().collection('og10_bk').doc(_dvBkId).delete().catch(()=>{});
+          slots=slots.filter(x=>x.id!==s.id);sv('jbog10_sl',slots);
+          if(_dvBkId)firebase.firestore().collection('jbog10_bk').doc(_dvBkId).delete().catch(()=>{});
           renderPcContent();renderList();
           if(!slots.filter(x=>x.date===ds).length)close();
         };
@@ -7976,7 +7976,7 @@ function openPcSlotDetail(slotId){
       fb.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=()=>{editForm.style.display='none';infoCard.style.display='block';editBtn.textContent='수정';};
       fb.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
         s.date=dtI.value;s.time=tmS.value;s.type=tyS.value;s.trainerId=trS.value;s.memo=meI.value.trim();
-        sv('og10_sl',slots);
+        sv('jbog10_sl',slots);
         if(s.bkId)updateCrmBk(s.bkId,{date:s.date,time:s.time,type:s.type,planId:s.planId||null,memo:s.memo});
         editForm.style.display='none';infoCard.style.display='block';editBtn.textContent='수정';
         renderInfo();renderPcContent();
@@ -7993,8 +7993,8 @@ function openPcSlotDetail(slotId){
     delBtn.onclick=()=>{
       if(!confirm((mb?mb.name:'이 일정')+'을 삭제하시겠습니까?'))return;
       const _bkId=s.bkId;
-      slots=slots.filter(x=>x.id!==s.id);sv('og10_sl',slots);
-      if(_bkId)firebase.firestore().collection('og10_bk').doc(_bkId).delete().catch(()=>{});
+      slots=slots.filter(x=>x.id!==s.id);sv('jbog10_sl',slots);
+      if(_bkId)firebase.firestore().collection('jbog10_bk').doc(_bkId).delete().catch(()=>{});
       closeModal();renderPcContent();
     };
   },{});
