@@ -5133,7 +5133,12 @@ function openPcPayment(mbId,parentBox,parentClose){
       const gcList=groupClasses.filter(g=>g.active!==false);
       if(!gcList.length){
         const emp=grid.appendChild(document.createElement('div'));emp.style.cssText='grid-column:1/-1;text-align:center;padding:48px 0;color:#2a2d45;font-size:13px;line-height:1.8;';
-        emp.innerHTML='등록된 그룹수업이 없습니다<br><small>그룹수업 → 수업 설정에서 수업을 추가하세요</small>';return;
+        emp.innerHTML='등록된 그룹수업이 없습니다';
+        const newBtn0=grid.appendChild(document.createElement('button'));
+        newBtn0.type='button';newBtn0.textContent='+ 새 그룹수업 만들기';
+        newBtn0.style.cssText='grid-column:1/-1;margin:0 auto;padding:10px 18px;border-radius:9px;border:1px solid #818cf8;background:transparent;color:#818cf8;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;';
+        newBtn0.onclick=()=>{openGrpClassModal(null,(newGc)=>{selGroupClassId=newGc.id;renderGrid();updateRight();});};
+        return;
       }
       const DAY_KSL=['일','월','화','수','목','금','토'];
       gcList.forEach(gc=>{
@@ -5154,6 +5159,12 @@ function openPcPayment(mbId,parentBox,parentClose){
         if(trName)card.appendChild(Object.assign(document.createElement('div'),{textContent:'담당: '+trName})).style.cssText='font-size:11px;color:#3a3f58;';
         card.onclick=()=>{selGroupClassId=isSel?null:gc.id;selProductId=null;customProd=null;renderGrid();updateRight();};
       });
+      const newCard=grid.appendChild(document.createElement('div'));
+      newCard.style.cssText='background:transparent;border:2px dashed #2a2d3a;border-radius:12px;padding:'+(isMob?'12px':'16px')+';cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;min-height:80px;color:#818cf8;font-size:13px;font-weight:600;';
+      newCard.textContent='+ 새 그룹수업 만들기';
+      newCard.onmouseenter=()=>{newCard.style.borderColor='#818cf8';};
+      newCard.onmouseleave=()=>{newCard.style.borderColor='#2a2d3a';};
+      newCard.onclick=()=>{openGrpClassModal(null,(newGc)=>{selGroupClassId=newGc.id;renderGrid();updateRight();});};
       return;
     }
     // ── 개인레슨: products 표시 ──
