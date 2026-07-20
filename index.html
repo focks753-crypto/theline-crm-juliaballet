@@ -1146,6 +1146,7 @@ let curUser=ld('jbog10_cu',null);
 let weekOff=0;let calView='week';
 let groupClasses=ld('jbog10_gcl',[]);let grpSessMap={};let grpLoaded=false;let grpMonthOff=0;let grpV='month';let grpSelDate='';
 let grpBillings=ld('jbog10_gbl',[]);
+let ptBillings=ld('jbog10_ptbl',[]);let ptBillMonthOff=0;
 let calScale=1.0; // 캘린더 확대/축소 레벨 (0.6~2.5)
 let selDay=(new Date().getDay()+6)%7;
 let newColor=0;
@@ -1175,12 +1176,12 @@ function getWeekNum(d){const f=new Date(d.getFullYear(),d.getMonth(),1);return M
 function fmtWeek(wd){const a=wd[0],b=wd[6];return{m:'[ '+(a.getMonth()+1)+'월 '+getWeekNum(a)+'주차 ]',s:(a.getMonth()+1)+'월 '+a.getDate()+'일 ~ '+(b.getMonth()+1)+'월 '+b.getDate()+'일'};}
 
 function getPlanUsed(planId){return slots.filter(s=>s.planId===planId&&s.type!=='OT').length;}
-function getPlanRemain(plan){if(plan&&plan.productType==='membership')return 0;return(plan.sessions||0)-getPlanUsed(plan.id);}
+function getPlanRemain(plan){if(plan&&(plan.productType==='membership'||plan.billingMode==='postpaid'))return 0;return(plan.sessions||0)-getPlanUsed(plan.id);}
 function planDaysLeft(plan){if(!plan||!plan.endDate)return null;return Math.ceil((new Date(plan.endDate)-new Date())/(1000*60*60*24));}
-function planRemLbl(plan){if(plan&&plan.productType==='membership'){const dl=planDaysLeft(plan);return dl==null?'기간제':(dl>=0?('D-'+dl):'만료');}return '잔여 '+getPlanRemain(plan)+'회';}
-function planRemWarn(plan){if(plan&&plan.productType==='membership'){const dl=planDaysLeft(plan);return dl!=null&&dl>=0&&dl<=14;}const r=getPlanRemain(plan);return r>=0&&r<=2;}
-function memRemLbl(mb){const plans=(mb.plans||[]).filter(p=>!p.refunded);const tot=plans.reduce((a,p)=>a+Math.max(0,getPlanRemain(p)),0);if(tot>0)return '잔여 '+tot+'회';const mP=plans.find(p=>p.productType==='membership'&&p.endDate);if(mP){const dl=planDaysLeft(mP);return dl>=0?('D-'+dl):'만료';}return '잔여 0회';}
-function isPlanActive(p){if(p&&p.productType==='membership'){const dl=planDaysLeft(p);return dl!=null&&dl>=0;}return getPlanRemain(p)>0;}
+function planRemLbl(plan){if(plan&&plan.billingMode==='postpaid')return '회당 '+(plan.pricePerSession||0).toLocaleString()+'원';if(plan&&plan.productType==='membership'){const dl=planDaysLeft(plan);return dl==null?'기간제':(dl>=0?('D-'+dl):'만료');}return '잔여 '+getPlanRemain(plan)+'회';}
+function planRemWarn(plan){if(plan&&plan.billingMode==='postpaid')return false;if(plan&&plan.productType==='membership'){const dl=planDaysLeft(plan);return dl!=null&&dl>=0&&dl<=14;}const r=getPlanRemain(plan);return r>=0&&r<=2;}
+function memRemLbl(mb){const plans=(mb.plans||[]).filter(p=>!p.refunded);const tot=plans.reduce((a,p)=>a+Math.max(0,getPlanRemain(p)),0);if(tot>0)return '잔여 '+tot+'회';const ptP=plans.find(p=>p.billingMode==='postpaid'&&p.status!=='cancelled');if(ptP)return '개인레슨 등록';const mP=plans.find(p=>p.productType==='membership'&&p.endDate);if(mP){const dl=planDaysLeft(mP);return dl>=0?('D-'+dl):'만료';}return '잔여 0회';}
+function isPlanActive(p){if(p&&p.billingMode==='postpaid')return p.status!=='cancelled';if(p&&p.productType==='membership'){const dl=planDaysLeft(p);return dl!=null&&dl>=0;}return getPlanRemain(p)>0;}
 function getMemberWarn(mb){return(mb.plans||[]).some(p=>getPlanRemain(p)>0&&getPlanRemain(p)<=2);}
 
 // 권한: 로그인한 사람이 관리자 role인지
@@ -1784,9 +1785,9 @@ function openAddSheet(time){
       const tw=document.getElementById('ty-wrap');if(!tw)return;tw.innerHTML='';
       let types=[];
       if(mb){
-        const durs=[...new Set((mb.plans||[]).map(p=>p.duration))];
-        if(durs.includes(25))types.push('25분 수업');if(durs.includes(50))types.push('50분 수업');types.push('OT');
-      } else {types=['OT','25분 수업','50분 수업','상담','차단'];}
+        const ptPlans=(mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&!p.refunded&&p.status!=='cancelled');
+        if(ptPlans.length)types.push('개인레슨 수업');types.push('OT');
+      } else {types=['OT','상담','차단'];}
       const tr2=trainers.find(t=>t.id===tid);
       if(tr2&&tr2.role==='관리자'&&!types.includes('상담'))types.push('상담');
       tysel=tw.appendChild(el('select'));types.forEach(t=>{const o=tysel.appendChild(document.createElement('option'));o.value=t;o.textContent=t;});
@@ -1799,18 +1800,15 @@ function openAddSheet(time){
       const showConsult=ty==='상담'&&isAdminRole;
       moLbl.textContent=showConsult?'상담 내용':'메모 (선택)';mo.placeholder=showConsult?'상담 내용 입력':'메모';
       if(ty==='차단'){planLbl.style.display='none';pw.style.display='none';return;}
-      if(!mb||ty==='OT'||ty==='상담'||!ty.includes('수업')){planLbl.style.display='none';pw.style.display='none';return;}
-      const dur=ty.startsWith('25')?25:50;
-      const matchPlans=(mb.plans||[]).filter(p=>p.duration===dur);
+      if(!mb||ty!=='개인레슨 수업'){planLbl.style.display='none';pw.style.display='none';return;}
+      const matchPlans=(mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&!p.refunded&&p.status!=='cancelled');
       if(!matchPlans.length){planLbl.style.display='none';pw.style.display='none';return;}
       planLbl.style.display='block';pw.style.display='block';
       matchPlans.forEach((p,i)=>{
-        const rem=getPlanRemain(p);
         const card=pw.appendChild(el('div','plan-option'+(i===0?' sel':'')));
         if(i===0)selectedPlanId=p.id;
-        card.appendChild(mk('div','plan-opt-info',p.sessions+'회권 ('+p.pricePerSession.toLocaleString()+'원/회)'));
-        card.appendChild(mk('div','plan-opt-sub','총 '+p.totalPrice.toLocaleString()+'원'));
-        card.appendChild(mk('div','plan-opt-rem'+(planRemWarn(p)?' warn':' ok'),planRemLbl(p)));
+        card.appendChild(mk('div','plan-opt-info',(p.productName||'개인레슨')+' (회당 '+(p.pricePerSession||0).toLocaleString()+'원)'));
+        card.appendChild(mk('div','plan-opt-rem ok',planRemLbl(p)));
         card.onclick=()=>{selectedPlanId=p.id;pw.querySelectorAll('.plan-option').forEach(x=>x.classList.remove('sel'));card.classList.add('sel');};
       });
     }
@@ -2795,46 +2793,38 @@ function renderAdmPkg(ct){
   // 종류 + 금액
   const r2b=form.appendChild(el('div','r2'));
   const typeS=r2b.appendChild(el('select'));typeS.style.cssText=iSt;
-  [{v:'pt',l:'수업권'}].forEach(({v,l})=>{
+  [{v:'pt',l:'개인레슨'}].forEach(({v,l})=>{
     const o=typeS.appendChild(document.createElement('option'));o.value=v;o.textContent=l;
   });
-  const priceI=r2b.appendChild(el('input'));priceI.type='text';priceI.placeholder='금액 (예: 450,000)';priceI.style.cssText=iSt;
+  const priceI=r2b.appendChild(el('input'));priceI.type='text';priceI.placeholder='회당 금액 (예: 100,000)';priceI.style.cssText=iSt;
   priceI.oninput=function(){this.value=fmtMoney(this.value);};
 
-  // 수업 횟수
+  // 수업 시간
   const r3b=form.appendChild(el('div','r2'));
-  const sessI=r3b.appendChild(el('input'));sessI.type='number';sessI.placeholder='횟수';sessI.style.cssText=iSt;
-  const durS=r3b.appendChild(el('input'));durS.type='number';durS.min='0';durS.placeholder='수업 시간(분)';durS.style.cssText=iSt;
+  const durS=r3b.appendChild(el('input'));durS.type='number';durS.min='1';durS.placeholder='수업 시간(분)';durS.style.cssText=iSt;
 
   form.appendChild(mk('button','sbtn','+ 상품 추가')).onclick=()=>{
     const name=ni.value.trim();const price=parseMoney(priceI.value);
     if(!name||!price){alert('상품명과 금액을 입력해주세요.');return;}
+    if(!parseInt(durS.value)){alert('수업 시간을 입력해주세요.');return;}
     const prod={
       id:'pr_mob_'+Date.now(),name,price,type:typeS.value,
-      sessions:parseInt(sessI.value)||0,
       duration:parseInt(durS.value)||0,
       createdAt:Date.now()
     };
     products.push(prod);
-    // 수업권이면 packages에도 등록 (기존 모바일 권종 폼 호환)
-    if(prod.type==='pt'&&prod.sessions&&prod.duration){
-      const pkg={id:'p_mob_'+Date.now(),duration:prod.duration,sessions:prod.sessions,price:prod.price};
-      packages.push(pkg);
-      prod.fromPkg=pkg.id;
-      sv('jbog10_pkg',packages);
-    }
-    sv('jbog10_pr',products);ni.value='';priceI.value='';sessI.value='';renderAdm();
+    sv('jbog10_pr',products);ni.value='';priceI.value='';durS.value='';renderAdm();
   };
 
   // 등록된 상품 목록
-  ct.appendChild(mk('div','sec','수업권'));
+  ct.appendChild(mk('div','sec','개인레슨'));
   const ptList=products.filter(p=>p.type==='pt');
-  if(!ptList.length){ct.appendChild(mk('div','','등록된 수업권 없음')).style.cssText='color:#555;font-size:13px;padding:4px 0 12px;';}
+  if(!ptList.length){ct.appendChild(mk('div','','등록된 개인레슨 요금제 없음')).style.cssText='color:#555;font-size:13px;padding:4px 0 12px;';}
   ptList.forEach(p=>{
     const card=ct.appendChild(el('div','pkgcard'));
     const info=card.appendChild(el('div'));
     info.appendChild(mk('div','pkginfo',p.name));
-    info.appendChild(mk('div','pkgprice',p.price.toLocaleString()+'원'+(p.sessions?' · '+p.sessions+'회':'')));
+    info.appendChild(mk('div','pkgprice',p.price.toLocaleString()+'원/회'+(p.duration?' · '+p.duration+'분':'')));
     const editBtnPT=card.appendChild(mk('button','pkgdel','수정'));
     editBtnPT.style.cssText='background:transparent;border:1px solid #818cf8;color:#818cf8;margin-right:6px;';
     editBtnPT.onclick=()=>openPcEditProduct(p.id,()=>renderAdm());
@@ -4338,7 +4328,7 @@ let pcCalY=new Date().getFullYear();let pcCalM=new Date().getMonth();
 const PC_NAV=[
   {id:'home',label:'홈',icon:''},
   {id:'customers',label:'고객관리',icon:'',subs:[{id:'members',label:'고객 관리'},{id:'consult',label:'상담 관리'},{id:'consult_hist',label:'상담 내역'},{id:'noweek',label:'주간미수업'},{id:'nextweek',label:'차주미수업'}]},
-  {id:'sales',label:'매출관리',icon:'',subs:[{id:'all',label:'매출내역'},{id:'bypkg',label:'상품별내역'},{id:'bypay',label:'결제수단별'},{id:'sessions',label:'세션로그'},{id:'refund',label:'환불내역'}]},
+  {id:'sales',label:'매출관리',icon:'',subs:[{id:'all',label:'매출내역'},{id:'bypkg',label:'상품별내역'},{id:'bypay',label:'결제수단별'},{id:'sessions',label:'세션로그'},{id:'ptbilling',label:'개인레슨 청구'},{id:'refund',label:'환불내역'}]},
   {id:'groupclass',label:'그룹수업',icon:'',subs:[{id:'month',label:'월간 현황'},{id:'billing',label:'청구 관리'},{id:'config',label:'수업 설정'},{id:'members',label:'회원 현황'}]},
   {id:'settings',label:'센터설정',icon:'',subs:[{id:'staff',label:'직원관리'},{id:'pkg',label:'상품관리'},{id:'avail',label:'예약설정'}]},
   {id:'calendar',label:'캘린더',icon:''},
@@ -4442,6 +4432,7 @@ function pcMbStatus(mb){
   if(mPlan){const rem=Math.ceil((new Date(mPlan.endDate)-new Date())/(1000*60*60*24));if(rem<=0)return'expired';if(rem<=14)return'expiring';return'active';}
   let total=0;plans.forEach(p=>{if(p.productType!=='membership'){const r=getPlanRemain(p);if(r>0)total+=r;}});
   if(total>0&&total<=2)return'expiring';if(total>0)return'active';
+  if(plans.some(p=>p.billingMode==='postpaid'&&p.status!=='cancelled'))return'active';
   // 만료된 플랜이라도 있으면 expired, 플랜 자체가 없으면 none
   return plans.length?'expired':'none';
 }
@@ -5084,21 +5075,20 @@ function openPcPayment(mbId,parentBox,parentClose){
   grid.style.cssText='display:grid;grid-template-columns:repeat('+(isMob?'2':'3')+',1fr);gap:'+(isMob?'8':'12')+'px;';
 
   function showCustomForm(){
-    let cType='pt';let cPayMethod=selPayMethod;
+    let cPayMethod=selPayMethod;
     pcModal((box,close)=>{
-      box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'직접 입력 결제'}));
+      box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'직접 입력 개인레슨 등록'}));
       box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub',textContent:mb.name+' · '+(mb.phone||'')}));
-      // 2열: 상품명 + 가격
+      // 2열: 상품명 + 회당 요금
       const r2=box.appendChild(document.createElement('div'));r2.className='pcm-row2';
-      const nameF=r2.appendChild(_f('상품명',true));const nameI=nameF.appendChild(_inp('예) 5회 특별권'));nameI.value='수업 5회';
-      const priceF=r2.appendChild(_f('가격',true));const priceI=priceF.appendChild(_inp('예) 200,000'));priceI.value='200,000';
+      const nameF=r2.appendChild(_f('상품명',true));const nameI=nameF.appendChild(_inp('예) 60분 개인레슨'));nameI.value='개인레슨';
+      const priceF=r2.appendChild(_f('회당 요금',true));const priceI=priceF.appendChild(_inp('예) 100,000'));priceI.value='100,000';
       priceI.oninput=function(){this.value=fmtMoney(this.value);};
-      // 2열: 횟수 + 수업 시간
+      // 수업 시간
       const r3=box.appendChild(document.createElement('div'));r3.className='pcm-row2';
-      const sesF=r3.appendChild(_f('횟수 (회)'));const sesI=sesF.appendChild(_inp('예) 5','number'));sesI.min='1';sesI.value='5';
-      const durF=r3.appendChild(_f('수업 시간 (분)'));const durI=durF.appendChild(_inp('예) 25','number'));durI.min='1';durI.value='25';
+      const durF=r3.appendChild(_f('수업 시간 (분)',true));const durI=durF.appendChild(_inp('예) 60','number'));durI.min='1';durI.value='60';
       // 결제 수단
-      const payF=box.appendChild(_f('결제 수단'));
+      const payF=box.appendChild(_f('결제 수단 (참고용)'));
       const payRow=payF.appendChild(document.createElement('div'));payRow.style.cssText='display:flex;gap:8px;';
       const payBtns=[];
       ['카드','현금','계좌이체'].forEach(pm=>{
@@ -5109,24 +5099,18 @@ function openPcPayment(mbId,parentBox,parentClose){
       });
       const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='24px';
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
-      btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'결제하기'})).onclick=()=>{
-        const name=nameI.value.trim();const price=parseMoney(priceI.value);
-        const ses=cType==='pt'?parseInt(sesI.value)||0:undefined;
-        const dur=cType==='pt'?parseInt(durI.value)||25:undefined;
+      btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'등록하기'})).onclick=()=>{
+        const name=nameI.value.trim();const price=parseMoney(priceI.value);const dur=parseInt(durI.value)||60;
         if(!name){alert('상품명을 입력해주세요.');return;}
-        if(!price){alert('가격을 입력해주세요.');return;}
-        if(cType==='pt'&&!ses){alert('횟수를 입력해주세요.');return;}
-        // 바로 결제 처리
+        if(!price){alert('회당 요금을 입력해주세요.');return;}
         const now=new Date();
-        const plan={id:'pl'+Date.now(),productId:'__custom__',productName:name,productType:cType,
-          duration:dur||25,sessions:ses||1,totalPrice:price,
-          pricePerSession:ses&&ses>0?Math.round(price/ses):price,
-          paymentMethod:cPayMethod,startDate:null,endDate:null,
-          paymentDate:now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0'),
-          addedAt:now.getTime()};
+        const todayStr2=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+        const plan={id:'pl'+Date.now(),productId:'__custom__',productName:name,productType:'pt',billingMode:'postpaid',
+          duration:dur,pricePerSession:price,totalPrice:0,sessions:0,status:'active',
+          paymentMethod:cPayMethod,startDate:todayStr2,addedAt:now.getTime()};
         mb.plans=mb.plans||[];mb.plans.push(plan);sv('jbog10_mb',members);
         close();closePayModal();
-        alert('✅ 결제 완료!\n'+name+' '+price.toLocaleString()+'원 ('+cPayMethod+')');
+        alert('✅ 개인레슨 등록 완료!\n'+name+' · 회당 '+price.toLocaleString()+'원');
         if(parentBox&&parentClose){renderMbDetailModal(parentBox,parentClose,mbId);}
         else{renderPcContent();setTimeout(()=>openPcMemberDetail(mbId),50);}
       };
@@ -5134,7 +5118,7 @@ function openPcPayment(mbId,parentBox,parentClose){
   }
   function renderTypeArea(){
     typeBar.innerHTML='';
-    [{id:'pt',l:'수업권'},{id:'group',l:'그룹수업'}].forEach(t=>{
+    [{id:'pt',l:'개인레슨'},{id:'group',l:'그룹수업'}].forEach(t=>{
       const btn=typeBar.appendChild(document.createElement('button'));
       btn.className='pc-tbtn'+(activeType===t.id?' pri':'');btn.textContent=t.l;
       btn.onclick=()=>{activeType=t.id;selProductId=null;selGroupClassId=null;customProd=null;renderTypeArea();};
@@ -5172,7 +5156,7 @@ function openPcPayment(mbId,parentBox,parentClose){
       });
       return;
     }
-    // ── 수업권: products 표시 ──
+    // ── 개인레슨: products 표시 ──
     const list=products.filter(p=>p.type===activeType);
     if(!list.length){
       const emp=grid.appendChild(document.createElement('div'));emp.style.cssText='grid-column:1/-1;text-align:center;padding:48px 0;color:#2a2d45;font-size:13px;line-height:1.8;';
@@ -5184,15 +5168,14 @@ function openPcPayment(mbId,parentBox,parentClose){
       card.style.cssText='background:'+(isSel?'rgba(129,140,248,.08)':'#0f1117')+';border:2px solid '+(isSel?'#818cf8':'#1e2026')+';border-radius:12px;padding:'+(isMob?'12px':'16px')+';cursor:pointer;transition:all .15s;display:flex;flex-direction:column;gap:'+(isMob?'6':'8')+'px;';
       card.onmouseenter=()=>{if(!isSel)card.style.borderColor='#252830';};
       card.onmouseleave=()=>{if(!isSel)card.style.borderColor='#1e2026';};
-      const _pInfo={bg:'rgba(129,140,248,.2)',c:'#818cf8',l:'수업권'};
+      const _pInfo={bg:'rgba(129,140,248,.2)',c:'#818cf8',l:'개인레슨'};
       const tbdg=card.appendChild(document.createElement('div'));
       tbdg.style.cssText='display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;align-self:flex-start;background:'+_pInfo.bg+';color:'+_pInfo.c+';white-space:nowrap;';
       tbdg.textContent=_pInfo.l;
       card.appendChild(Object.assign(document.createElement('div'),{textContent:p.name})).style.cssText='font-size:15px;font-weight:800;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
       const priceRow=card.appendChild(document.createElement('div'));priceRow.style.cssText='display:flex;align-items:baseline;gap:6px;';
-      if(p.sessions)priceRow.appendChild(Object.assign(document.createElement('div'),{textContent:p.sessions+'회'})).style.cssText='font-size:13px;color:#6b7494;white-space:nowrap;';
-      priceRow.appendChild(Object.assign(document.createElement('div'),{textContent:p.price.toLocaleString()+'원'})).style.cssText='font-size:16px;font-weight:800;color:#818cf8;white-space:nowrap;';
-      if(p.sessions&&p.sessions>0)card.appendChild(Object.assign(document.createElement('div'),{textContent:'회당 '+Math.round(p.price/p.sessions).toLocaleString()+'원'})).style.cssText='font-size:11px;color:#3a3f58;white-space:nowrap;';
+      if(p.duration)priceRow.appendChild(Object.assign(document.createElement('div'),{textContent:p.duration+'분'})).style.cssText='font-size:13px;color:#6b7494;white-space:nowrap;';
+      priceRow.appendChild(Object.assign(document.createElement('div'),{textContent:p.price.toLocaleString()+'원/회'})).style.cssText='font-size:16px;font-weight:800;color:#818cf8;white-space:nowrap;';
       card.onclick=()=>{selProductId=isSel?null:p.id;customProd=null;renderGrid();updateRight();};
     });
   }
@@ -5284,33 +5267,23 @@ function openPcPayment(mbId,parentBox,parentClose){
       updateGrpCalc();
       return;
     }
-    // ── 수업권 ──
+    // ── 개인레슨 (후불 등록) ──
     const prod=customProd||(selProductId?products.find(p=>p.id===selProductId):null);if(!prod)return;
     const c=selArea.appendChild(document.createElement('div'));
     c.style.cssText='background:#111318;border:1.5px solid #818cf8;border-radius:10px;padding:14px;';
     const todayN=new Date();const tf=todayN.getFullYear()+'-'+String(todayN.getMonth()+1).padStart(2,'0')+'-'+String(todayN.getDate()).padStart(2,'0');
     if(!selStartDate)selStartDate=tf;
     c.innerHTML='<div style="font-size:14px;font-weight:800;color:#e2e8f0;margin-bottom:6px;">'+prod.name+'</div>'
-      +(prod.sessions?'<div style="font-size:11px;color:#6b7494;margin-bottom:4px;">'+prod.sessions+'회권</div>':'')
-      +'<div style="font-size:11px;color:#6b7494;margin-bottom:6px;">정가: '+prod.price.toLocaleString()+'원</div>';
+      +(prod.duration?'<div style="font-size:11px;color:#6b7494;margin-bottom:6px;">'+prod.duration+'분</div>':'');
     selPrice=prod.price;
-    // 결제금액 수정 입력창
-    const priceEditWrap=c.appendChild(document.createElement('div'));priceEditWrap.style.cssText='margin-bottom:'+(prod.type==='membership'?'10':'4')+'px;';
-    priceEditWrap.appendChild(Object.assign(document.createElement('div'),{textContent:'결제 금액 (수정 가능)'})).style.cssText='font-size:11px;color:#3a3f58;margin-bottom:5px;font-weight:600;letter-spacing:.3px;';
+    // 회당 요금 수정 입력창
+    const priceEditWrap=c.appendChild(document.createElement('div'));priceEditWrap.style.cssText='margin-bottom:4px;';
+    priceEditWrap.appendChild(Object.assign(document.createElement('div'),{textContent:'회당 요금 (수정 가능)'})).style.cssText='font-size:11px;color:#3a3f58;margin-bottom:5px;font-weight:600;letter-spacing:.3px;';
     const priceInput=priceEditWrap.appendChild(document.createElement('input'));priceInput.type='text';priceInput.value=prod.price.toLocaleString();priceInput.style.cssText='width:100%;padding:10px 12px;border:1.5px solid #818cf8;border-radius:8px;background:#0a0c10;color:#818cf8;font-size:18px;font-weight:800;text-align:right;outline:none;box-sizing:border-box;font-family:inherit;';
-    const perHint=priceEditWrap.appendChild(document.createElement('div'));perHint.style.cssText='font-size:11px;color:#3a3f58;text-align:right;margin-top:4px;';
-    if(prod.sessions&&prod.sessions>0)perHint.textContent='회당 '+Math.round(selPrice/prod.sessions).toLocaleString()+'원';
-    priceInput.oninput=()=>{const raw=priceInput.value.replace(/[^0-9]/g,'');selPrice=parseInt(raw)||0;const cur=priceInput.selectionStart;priceInput.value=selPrice.toLocaleString();try{priceInput.setSelectionRange(cur,cur);}catch(e){}if(prod.sessions&&prod.sessions>0)perHint.textContent='회당 '+Math.round(selPrice/prod.sessions).toLocaleString()+'원';payBtn.textContent=selPrice.toLocaleString()+'원  결제하기';};
-    if(prod.type==='membership'){
-      const df=c.appendChild(document.createElement('div'));
-      df.innerHTML='<div style="font-size:11px;color:#3a3f58;margin-bottom:5px;">이용 기간</div>';
-      const dr=df.appendChild(document.createElement('div'));dr.style.cssText='display:flex;align-items:center;gap:6px;';
-      const sI=dr.appendChild(document.createElement('input'));sI.type='date';sI.value=selStartDate;sI.style.cssText='flex:1;padding:6px 8px;border:1px solid #1e2026;border-radius:6px;background:#0a0c10;color:#e2e8f0;font-size:12px;outline:none;color-scheme:dark;cursor:pointer;';
-      dr.appendChild(Object.assign(document.createElement('span'),{textContent:'~'})).style.color='#3a3f58';
-      const eI=dr.appendChild(document.createElement('input'));eI.type='date';eI.value=selEndDate;eI.style.cssText='flex:1;padding:6px 8px;border:1px solid #1e2026;border-radius:6px;background:#0a0c10;color:#e2e8f0;font-size:12px;outline:none;color-scheme:dark;cursor:pointer;';
-      sI.onchange=()=>selStartDate=sI.value;eI.onchange=()=>selEndDate=eI.value;
-    }
-    payBtn.textContent=prod.price.toLocaleString()+'원  결제하기'; selPrice=prod.price;
+    priceInput.oninput=()=>{const raw=priceInput.value.replace(/[^0-9]/g,'');selPrice=parseInt(raw)||0;const cur=priceInput.selectionStart;priceInput.value=selPrice.toLocaleString();try{priceInput.setSelectionRange(cur,cur);}catch(e){}payBtn.textContent='회당 '+selPrice.toLocaleString()+'원  개인레슨 등록';};
+    const noteDiv=c.appendChild(document.createElement('div'));noteDiv.style.cssText='font-size:11px;color:#3a3f58;margin-top:8px;line-height:1.6;';
+    noteDiv.textContent='지금은 매출이 발생하지 않습니다. 캘린더에 일정을 등록하고 수업이 끝나면 "개인레슨 청구"에서 월별로 청구합니다.';
+    payBtn.textContent='회당 '+prod.price.toLocaleString()+'원  개인레슨 등록'; selPrice=prod.price;
   }
   updateRight();
 
@@ -5342,15 +5315,13 @@ function openPcPayment(mbId,parentBox,parentClose){
     }
     const prod=customProd||(selProductId?products.find(p=>p.id===selProductId):null);
     if(!prod){alert('상품을 선택해주세요.');return;}
-    if(prod.type==='membership'&&(!selStartDate||!selEndDate)){alert('이용 기간을 입력해주세요.');return;}
-    const plan={id:'pl'+Date.now(),productId:prod.id,productName:prod.name,productType:prod.type,
-      duration:prod.duration||50,sessions:prod.sessions||1,totalPrice:selPrice,
-      pricePerSession:prod.sessions?Math.round(selPrice/prod.sessions):selPrice,
-      paymentMethod:selPayMethod,startDate:prod.type==='membership'?selStartDate:null,endDate:prod.type==='membership'?selEndDate:null,
-      paymentDate:todayStr,addedAt:now.getTime()};
+    if(!selPrice){alert('회당 요금을 입력해주세요.');return;}
+    const plan={id:'pl'+Date.now(),productId:prod.id,productName:prod.name,productType:'pt',billingMode:'postpaid',
+      duration:prod.duration||60,pricePerSession:selPrice,totalPrice:0,sessions:0,status:'active',
+      paymentMethod:selPayMethod,startDate:todayStr,addedAt:now.getTime()};
     mb.plans=mb.plans||[];mb.plans.push(plan);sv('jbog10_mb',members);
     closePayModal();
-    alert('✅ 결제 완료!\n'+prod.name+' '+selPrice.toLocaleString()+'원 ('+selPayMethod+')');
+    alert('✅ 개인레슨 등록 완료!\n'+prod.name+' · 회당 '+selPrice.toLocaleString()+'원\n캘린더에 일정을 등록하면 수업 완료 후 자동으로 청구에 반영됩니다.');
     // 회원 상세로 돌아가기
     if(parentBox&&parentClose){renderMbDetailModal(parentBox,parentClose,mbId);}
     else{renderPcContent();setTimeout(()=>openPcMemberDetail(mbId),50);}
@@ -5531,7 +5502,7 @@ function renderPcSales(ct,acts){
   const stbar=document.getElementById('pc-subtabbar');
   if(stbar){
     stbar.innerHTML='';stbar.style.display='flex';stbar.style.padding='0 24px';
-    const subMap={all:'매출내역',bypkg:'상품별내역',bypay:'결제수단별',sessions:'세션로그',refund:'환불내역'};
+    const subMap={all:'매출내역',bypkg:'상품별내역',bypay:'결제수단별',sessions:'세션로그',ptbilling:'개인레슨 청구',refund:'환불내역'};
     Object.entries(subMap).forEach(([id,lbl])=>{
       const tab=stbar.appendChild(Object.assign(document.createElement('div'),{className:'pc-stab'+(pcSV===id?' on':''),textContent:lbl}));
       tab.onclick=()=>{pcSV=id;initPcNav();renderPcContent();};
@@ -5540,6 +5511,7 @@ function renderPcSales(ct,acts){
   // ─ 분기 ──────────────────────────────────────────────────────────────
   if(pcSV==='refund'){renderPcRefundHist(ct,acts);return;}
   if(pcSV==='sessions'){renderPcSessions(ct,acts);return;}
+  if(pcSV==='ptbilling'){_renderPtBilling(ct,acts);return;}
   if(!pcSalStart){const n=new Date();pcSalStart=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-01';const l=new Date(n.getFullYear(),n.getMonth()+1,0);pcSalEnd=l.getFullYear()+'-'+String(l.getMonth()+1).padStart(2,'0')+'-'+String(l.getDate()).padStart(2,'0');}
   if(!pcSV)pcSV='all';
 
@@ -5822,25 +5794,23 @@ function openPcEditProduct(prodId,onSaved){
     box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'상품 수정'}));
     box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub',textContent:p.name}));
     const nameF=box.appendChild(_f('상품명',true));const nameI=nameF.appendChild(_inp('상품명'));nameI.value=p.name;
-    const priceF=box.appendChild(_f('가격',true));const priceI=priceF.appendChild(_inp('가격'));priceI.value=fmtMoney(p.price);priceI.oninput=function(){this.value=fmtMoney(this.value);};
-    const sessRow=box.appendChild(_f('횟수 (수업)'));
-    const durRow=box.appendChild(_f('수업 시간'));
+    const priceF=box.appendChild(_f(p.type==='pt'?'회당 가격':'가격',true));const priceI=priceF.appendChild(_inp('가격'));priceI.value=fmtMoney(p.price);priceI.oninput=function(){this.value=fmtMoney(this.value);};
+    const durRow=box.appendChild(_f('수업 시간 (분)'));
     if(p.type==='pt'){
-      const sessS=sessRow.appendChild(_inp('예) 10','number'));sessS.min='1';sessS.style.width='100%';
-      if(p.sessions)sessS.value=p.sessions;
-      const durS=durRow.appendChild(_inp('예) 25','number'));durS.min='1';durS.style.width='100%';
-      durS.value=p.duration||25;
+      const durS=durRow.appendChild(_inp('예) 60','number'));durS.min='1';durS.style.width='100%';
+      durS.value=p.duration||60;
       const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='24px';
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
         const name=nameI.value.trim();const price=parseMoney(priceI.value);
         if(!name){alert('상품명을 입력해주세요.');return;}if(!price){alert('가격을 입력해주세요.');return;}
-        p.name=name;p.price=price;p.sessions=parseInt(sessS.value);p.duration=parseInt(durS.value);
+        if(!(parseInt(durS.value)>=1)){alert('수업 시간을 입력해주세요.');return;}
+        p.name=name;p.price=price;p.duration=parseInt(durS.value);
         sv('jbog10_pr',products);close();
         if(onSaved)onSaved();else renderPcContent();
       };
     } else {
-      sessRow.style.display='none';durRow.style.display='none';
+      durRow.style.display='none';
       const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='24px';
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
@@ -5858,22 +5828,21 @@ function openPcEditProduct(prodId,onSaved){
 function openPcCreateProduct(onCreated){
   pcModal((box,close)=>{
     box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'상품 생성'}));
-    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub',textContent:'새 수업권 또는 그룹수업을 등록합니다'}));
-    const nameF=box.appendChild(_f('상품명',true));const nameI=nameF.appendChild(_inp('예) 10회권'));
-    const priceF=box.appendChild(_f('가격',true));const priceI=priceF.appendChild(_inp('예) 450,000'));priceI.oninput=function(){this.value=fmtMoney(this.value);};
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub',textContent:'새 개인레슨 요금제 또는 그룹수업을 등록합니다'}));
+    const nameF=box.appendChild(_f('상품명',true));const nameI=nameF.appendChild(_inp('예) 60분 개인레슨'));
+    const priceF=box.appendChild(_f('회당 가격',true));const priceI=priceF.appendChild(_inp('예) 100,000'));priceI.oninput=function(){this.value=fmtMoney(this.value);};
     const typeF=box.appendChild(_f('종목',true));
     const typeRow=typeF.appendChild(document.createElement('div'));typeRow.style.cssText='display:flex;gap:8px;flex-wrap:wrap;';
     let selType='pt';const typeBtns=[];
-    [{v:'pt',l:'수업권'},{v:'group',l:'그룹수업'}].forEach(t=>{
+    [{v:'pt',l:'개인레슨'},{v:'group',l:'그룹수업'}].forEach(t=>{
       const btn=typeRow.appendChild(document.createElement('button'));const isOn=selType===t.v;
       btn.style.cssText='flex:1;min-width:80px;padding:12px;border-radius:9px;border:1.5px solid '+(isOn?'#818cf8':'#1e2026')+';background:'+(isOn?'rgba(129,140,248,.1)':'#0f1117')+';color:'+(isOn?'#818cf8':'#6b7494')+';font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;';
       btn.textContent=t.l;typeBtns.push({btn,v:t.v});
       btn.onclick=()=>{selType=t.v;typeBtns.forEach(({btn:b,v})=>{b.style.borderColor=selType===v?'#818cf8':'#1e2026';b.style.background=selType===v?'rgba(129,140,248,.1)':'#0f1117';b.style.color=selType===v?'#818cf8':'#6b7494';});
-        sessRow.style.display=selType==='pt'?'block':'none';durRow.style.display=selType==='pt'?'block':'none';
+        durRow.style.display=selType==='pt'?'block':'none';
         grpRow.style.display=selType==='group'?'block':'none';grpSpmRow.style.display=selType==='group'?'block':'none';};
     });
-    const sessRow=box.appendChild(_f('횟수 (수업)'));const sessS=sessRow.appendChild(_inp('예) 10','number'));sessS.min='1';sessS.style.width='100%';
-    const durRow=box.appendChild(_f('수업 시간'));const durS=durRow.appendChild(_inp('예) 25','number'));durS.min='1';durS.style.width='100%';durS.value='25';
+    const durRow=box.appendChild(_f('수업 시간 (분)',true));const durS=durRow.appendChild(_inp('예) 60','number'));durS.min='1';durS.style.width='100%';durS.value='60';
     // 그룹수업 전용 필드
     const grpRow=box.appendChild(_f('연결 그룹수업'));
     const grpWrap=grpRow.appendChild(document.createElement('div'));grpWrap.style.cssText='display:flex;gap:8px;';
@@ -5900,8 +5869,8 @@ function openPcCreateProduct(onCreated){
       if(!name){alert('상품명을 입력해주세요.');return;}if(!price){alert('가격을 입력해주세요.');return;}
       if(selType==='group'&&!grpS.value){alert('그룹수업을 선택해주세요.');return;}
       if(selType==='group'&&!(parseInt(grpSpmI.value)>=1)){alert('월 수업 횟수를 입력해주세요.');return;}
+      if(selType==='pt'&&!(parseInt(durS.value)>=1)){alert('수업 시간을 입력해주세요.');return;}
       const prod={id:'pr'+Date.now(),name,price,type:selType,
-        sessions:selType==='pt'?parseInt(sessS.value):undefined,
         duration:selType==='pt'?parseInt(durS.value):undefined,
         groupClassId:selType==='group'?grpS.value:undefined,
         sessionsPerMonth:selType==='group'?parseInt(grpSpmI.value):undefined,
@@ -6189,6 +6158,29 @@ function renderMbPlanCard(container, mb, p, box, close) {
       +'시작일: '+p.startDate+(p.cancelledDate?' · 해지: '+p.cancelledDate:'')+'<br>'
       +'이번 달 출석: <strong style="color:#3dc87a;">'+used+'/'+curMonthSess+'회</strong> · '
       +(bill?(bill.paid?'<span style="color:#3dc87a;">결제완료</span>':'<span style="color:#f87171;">미결제 ('+bill.amount.toLocaleString()+'원)</span>'):'청구 내역 없음');
+    return;
+  }
+  // 개인레슨(후불) 등록은 별도 카드
+  if(p.billingMode==='postpaid'&&p.productType==='pt'){
+    const card=container.appendChild(document.createElement('div'));
+    card.style.cssText='background:#0f1117;border:1px solid '+(p.status==='cancelled'?'#2a1a1a':'#1e2026')+';border-radius:10px;padding:14px 16px;margin-bottom:8px;';
+    const top=card.appendChild(document.createElement('div'));top.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;';
+    top.appendChild(Object.assign(document.createElement('div'),{textContent:p.productName||(p.duration+'분 개인레슨')})).style.cssText='font-size:13px;font-weight:700;color:#e2e8f0;flex:1;';
+    const bdg=top.appendChild(document.createElement('span'));bdg.style.cssText='padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;background:rgba(129,140,248,.2);color:#818cf8;';bdg.textContent='개인레슨';
+    const stBdg=top.appendChild(document.createElement('span'));stBdg.className='pbs '+(p.status==='cancelled'?'pbs-off':'pbs-on');stBdg.textContent=p.status==='cancelled'?'해지':'진행중';
+    if(p.status!=='cancelled'){
+      const cancelBtn=top.appendChild(Object.assign(document.createElement('button'),{textContent:'해지'}));
+      cancelBtn.style.cssText='padding:4px 10px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:transparent;color:#f87171;font-size:11px;cursor:pointer;';
+      cancelBtn.onclick=()=>{if(!confirm('개인레슨 등록을 해지하시겠습니까?'))return;p.status='cancelled';p.cancelledDate=_grpFmtD(new Date());sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);};
+    }
+    const info=card.appendChild(document.createElement('div'));info.style.cssText='font-size:11px;color:#4a5068;line-height:1.9;';
+    const curMonth=_grpFmtD(new Date()).slice(0,7);
+    const monthSess=getPtMemberMonthCompleted(mb.id,p.id,curMonth);
+    const bill=ptBillings.find(b=>b.memberId===mb.id&&b.planId===p.id&&b.month===curMonth);
+    info.innerHTML='회당 '+(p.pricePerSession||0).toLocaleString()+'원 · '+(p.duration||'?')+'분<br>'
+      +'등록일: '+p.startDate+(p.cancelledDate?' · 해지: '+p.cancelledDate:'')+'<br>'
+      +'이번 달 완료 수업: <strong style="color:#3dc87a;">'+monthSess+'회</strong>'
+      +(bill&&bill.amount>0?(' = '+bill.amount.toLocaleString()+'원 · '+(bill.paid?'<span style="color:#3dc87a;">결제완료</span>':'<span style="color:#f87171;">미결제</span>')):'');
     return;
   }
   const card = container.appendChild(document.createElement('div'));
@@ -6613,6 +6605,47 @@ async function svGrpBilling(bill){
     sv('jbog10_gbl',grpBillings);
   }catch(e){alert('저장 실패');}
 }
+// ── 개인레슨 후불 청구 헬퍼 ────────────────────────────────────────────────
+// 특정 회원이 특정 개인레슨 플랜으로 특정 월에 "완료한"(오늘 이전) 일정 수
+function getPtMemberMonthCompleted(memberId,planId,month){
+  const todayStr=_grpFmtD(new Date());
+  return slots.filter(s=>s.memberId===memberId&&s.planId===planId&&s.date.slice(0,7)===month&&s.date<=todayStr).length;
+}
+// 등록된 개인레슨(후불) 플랜들의 청구 레코드를 월별로 보장/갱신
+// 미결제 상태인 달은 완료 세션 수가 늘어날 때마다 금액을 최신화하고, 결제완료된 달은 건드리지 않음
+function ensurePtBillings(){
+  const today=new Date();const curMonth=_grpFmtD(today).slice(0,7);
+  members.forEach(mb=>{
+    (mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&!p.refunded&&p.status!=='cancelled').forEach(plan=>{
+      const startMonth=plan.startDate?plan.startDate.slice(0,7):'';if(!startMonth)return;
+      let ym=new Date(startMonth+'-01T00:00:00');
+      while(_grpFmtD(ym).slice(0,7)<=curMonth){
+        const month=_grpFmtD(ym).slice(0,7);
+        const sessions=getPtMemberMonthCompleted(mb.id,plan.id,month);
+        const amount=sessions*(plan.pricePerSession||0);
+        let bill=ptBillings.find(b=>b.memberId===mb.id&&b.planId===plan.id&&b.month===month);
+        if(!bill){
+          bill={id:'ptbill'+Date.now()+'_'+Math.random().toString(36).slice(2),
+            memberId:mb.id,memberName:mb.name,planId:plan.id,productName:plan.productName,
+            duration:plan.duration,month,sessions,pricePerSession:plan.pricePerSession||0,amount,
+            paid:false,paidDate:null,paymentMethod:null,createdAt:Date.now()};
+          ptBillings.push(bill);
+        } else if(!bill.paid){
+          bill.sessions=sessions;bill.amount=amount;
+        }
+        ym.setMonth(ym.getMonth()+1);
+      }
+    });
+  });
+  sv('jbog10_ptbl',ptBillings);
+}
+async function svPtBilling(bill){
+  try{
+    if(db){if(bill.id&&!bill.id.startsWith('ptbill'))await db.collection('jbog10_ptbl').doc(bill.id).set(bill);else{const r=await db.collection('jbog10_ptbl').add(bill);bill.id=r.id;}}
+    const i=ptBillings.findIndex(b=>b.id===bill.id);if(i>=0)ptBillings[i]=bill;else ptBillings.push(bill);
+    sv('jbog10_ptbl',ptBillings);
+  }catch(e){alert('저장 실패');}
+}
 function getGrpMonthRange(){
   const today=new Date();
   const base=new Date(today.getFullYear(),today.getMonth()+grpMonthOff,1);
@@ -6799,6 +6832,128 @@ function _renderGrpBilling(ct){
       rb.style.cssText='padding:4px 10px;font-size:11px;color:#3dc87a;border-color:#3dc87a;';
       rb.onclick=()=>{if(!confirm(mb.name+' 님의 '+gcName+' 구독을 재등록하시겠습니까?\n('+_grpFmtD(new Date())+' 부터 재개)'))return;
         plan.status='active';plan.cancelledDate=null;plan.startDate=_grpFmtD(new Date());sv('jbog10_mb',members);ensureGrpBillings();renderPcContent();};
+    }
+  });
+}
+
+// ── 개인레슨 청구 관리 ────────────────────────────────────────────────────
+function _renderPtBilling(ct){
+  ensurePtBillings();
+  const today=new Date();
+  const base=new Date(today.getFullYear(),today.getMonth()+ptBillMonthOff,1);
+  const curMonth=base.getFullYear()+'-'+String(base.getMonth()+1).padStart(2,'0');
+  // 네비
+  const nav=ct.appendChild(document.createElement('div'));nav.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;';
+  nav.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'◀'})).onclick=()=>{ptBillMonthOff--;renderPcContent();};
+  const lbl=nav.appendChild(document.createElement('span'));lbl.style.cssText='font-size:15px;font-weight:800;color:#e2e8f0;';lbl.textContent=base.getFullYear()+'년 '+(base.getMonth()+1)+'월 개인레슨 청구 현황';
+  nav.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'▶'})).onclick=()=>{ptBillMonthOff++;renderPcContent();};
+  nav.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'이번 달'})).onclick=()=>{ptBillMonthOff=0;renderPcContent();};
+  const xlBtn=nav.appendChild(document.createElement('button'));xlBtn.className='pc-tbtn';xlBtn.textContent='⬇ 엑셀';xlBtn.style.cssText='margin-left:auto;color:#3dc87a;border-color:#3dc87a;padding:7px 14px;';
+  const bills=ptBillings.filter(b=>b.month===curMonth&&b.sessions>0);
+  xlBtn.onclick=()=>{
+    if(!bills.length){alert('다운로드할 청구 내역이 없습니다.');return;}
+    const hdr=['회원명','연락처','상품명','횟수','청구금액','상태','결제일','결제수단'];
+    const rows=[hdr.join(',')];
+    bills.forEach(b=>{
+      const mb=members.find(m=>m.id===b.memberId);
+      rows.push(['"'+(b.memberName||'')+'"','"'+(mb?.phone||'')+'"','"'+(b.productName||'')+'"',
+        b.sessions+'회',b.amount,'"'+(b.paid?'결제완료':'미결제')+'"','"'+(b.paidDate||'')+'"','"'+(b.paymentMethod||'')+'"'].join(','));
+    });
+    const blob=new Blob(['﻿'+rows.join('\n')],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;
+    a.download='개인레슨청구_'+curMonth+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  };
+  if(!bills.length){ct.appendChild(Object.assign(document.createElement('div'),{className:'sal-empty',textContent:'이 달 완료된 개인레슨 일정이 없습니다.'}));}
+  else{
+    const paid=bills.filter(b=>b.paid).length;const unpaid=bills.filter(b=>!b.paid).length;
+    const totalAmt=bills.reduce((s,b)=>s+b.amount,0);const paidAmt=bills.filter(b=>b.paid).reduce((s,b)=>s+b.amount,0);
+    const summRow=ct.appendChild(document.createElement('div'));summRow.style.cssText='display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;';
+    [{l:'전체',v:bills.length+'건',c:'#e2e8f0'},{l:'결제완료',v:paid+'건',c:'#3dc87a'},{l:'미결제',v:unpaid+'건',c:'#f87171'},{l:'청구금액',v:totalAmt.toLocaleString()+'원',c:'#818cf8'},{l:'수납금액',v:paidAmt.toLocaleString()+'원',c:'#3dc87a'}].forEach(({l,v,c})=>{
+      const card=summRow.appendChild(document.createElement('div'));card.style.cssText='background:#111318;border:1px solid #1e2026;border-radius:10px;padding:10px 16px;';
+      card.innerHTML='<div style="font-size:11px;color:#4a5068;margin-bottom:3px;">'+l+'</div><div style="font-size:16px;font-weight:800;color:'+c+';">'+v+'</div>';
+    });
+    const tw=ct.appendChild(Object.assign(document.createElement('div'),{className:'pc-tw'}));
+    const tbl=tw.appendChild(Object.assign(document.createElement('table'),{className:'pc-tbl'}));
+    const hr=tbl.appendChild(document.createElement('thead')).appendChild(document.createElement('tr'));
+    ['회원명','연락처','상품명','횟수','청구금액','상태','결제일','결제수단','처리'].forEach(h=>hr.appendChild(Object.assign(document.createElement('th'),{textContent:h})));
+    const tbody=tbl.appendChild(document.createElement('tbody'));
+    bills.sort((a,b)=>a.paid-b.paid||(a.memberName||'').localeCompare(b.memberName||'')).forEach(bill=>{
+      const mb=members.find(m=>m.id===bill.memberId);
+      const row=tbody.appendChild(document.createElement('tr'));
+      if(bill.paid)row.style.opacity='0.65';
+      [bill.memberName,mb?.phone||'-',bill.productName||'-',bill.sessions+'회',bill.amount.toLocaleString()+'원',
+        bill.paid?'결제완료':'미결제',bill.paidDate||'-',bill.paymentMethod||'-'].forEach((v,i)=>{
+        const td=row.appendChild(document.createElement('td'));td.textContent=v;
+        if(i===5)td.style.color=bill.paid?'#3dc87a':'#f87171';
+        if(i===1)td.style.cssText='color:#818cf8;font-size:12px;';
+      });
+      const actTd=row.appendChild(document.createElement('td'));
+      if(!bill.paid){
+        const pmRow=actTd.appendChild(document.createElement('div'));pmRow.style.cssText='display:flex;gap:4px;align-items:center;flex-wrap:nowrap;';
+        const pmSel=pmRow.appendChild(document.createElement('select'));pmSel.className='pcm-select';pmSel.style.cssText='padding:4px 8px;font-size:11px;width:80px;';
+        ['카드','현금','계좌이체'].forEach(pm=>{const o=pmSel.appendChild(document.createElement('option'));o.value=pm;o.textContent=pm;});
+        const pBtn=pmRow.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'결제완료'}));
+        pBtn.style.cssText='padding:4px 10px;font-size:11px;color:#3dc87a;border-color:#3dc87a;white-space:nowrap;';
+        pBtn.onclick=async()=>{
+          const now2=new Date();const todayStr2=_grpFmtD(now2);
+          bill.paid=true;bill.paidDate=todayStr2;bill.paymentMethod=pmSel.value;
+          // ── 매출 발생: member.plans에 개인레슨 청구 레코드 추가 ──
+          if(mb&&bill.amount>0){
+            const salePlan={id:'pt_sal_'+bill.id,productName:(bill.productName||'개인레슨')+' '+bill.month,productType:'pt_monthly',
+              totalPrice:bill.amount,paymentMethod:pmSel.value,
+              paymentDate:todayStr2,addedAt:now2.getTime(),ptBillId:bill.id};
+            mb.plans=mb.plans||[];
+            const exists=mb.plans.find(p=>p.ptBillId===bill.id);
+            if(!exists)mb.plans.push(salePlan);
+            sv('jbog10_mb',members);
+          }
+          await svPtBilling(bill);renderPcContent();
+        };
+      } else {
+        const ubtn=actTd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'미수 처리'}));
+        ubtn.style.cssText='padding:4px 10px;font-size:11px;color:#f87171;border-color:#f87171;white-space:nowrap;';
+        ubtn.onclick=async()=>{
+          if(!confirm('결제 완료를 취소하고 미수로 변경하시겠습니까?'))return;
+          bill.paid=false;bill.paidDate=null;bill.paymentMethod=null;
+          if(mb){mb.plans=(mb.plans||[]).filter(p=>p.ptBillId!==bill.id);sv('jbog10_mb',members);}
+          await svPtBilling(bill);renderPcContent();
+        };
+      }
+    });
+  }
+  // 등록 현황
+  const mgrHdr=ct.appendChild(document.createElement('div'));mgrHdr.style.cssText='margin-top:28px;margin-bottom:12px;font-size:13px;font-weight:700;color:#6b7494;';mgrHdr.textContent='개인레슨 등록 현황';
+  const allPtPlans=[];members.forEach(mb=>(mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&!p.refunded).forEach(plan=>{
+    const monthSess=getPtMemberMonthCompleted(mb.id,plan.id,curMonth);
+    allPtPlans.push({mb,plan,monthlyAmt:monthSess*(plan.pricePerSession||0),monthSess});
+  }));
+  if(!allPtPlans.length){ct.appendChild(Object.assign(document.createElement('div'),{className:'sal-empty',textContent:'등록된 개인레슨이 없습니다.'}));return;}
+  const stw=ct.appendChild(Object.assign(document.createElement('div'),{className:'pc-tw'}));
+  const stbl=stw.appendChild(Object.assign(document.createElement('table'),{className:'pc-tbl'}));
+  const shr=stbl.appendChild(document.createElement('thead')).appendChild(document.createElement('tr'));
+  ['회원','연락처','상품','회당 요금','시작일','이번달 진행','상태','관리'].forEach(h=>shr.appendChild(Object.assign(document.createElement('th'),{textContent:h})));
+  const stb=stbl.appendChild(document.createElement('tbody'));
+  allPtPlans.sort((a,b)=>(a.plan.status==='cancelled'?1:-1)-(b.plan.status==='cancelled'?1:-1)||(a.mb.name||'').localeCompare(b.mb.name||'')).forEach(({mb,plan,monthSess})=>{
+    const isCancelled=plan.status==='cancelled';
+    const row=stb.appendChild(document.createElement('tr'));
+    if(isCancelled)row.style.opacity='0.5';
+    [mb.name,mb.phone||'-',plan.productName||'-',(plan.pricePerSession||0).toLocaleString()+'원',plan.startDate||'-',monthSess+'회',
+      isCancelled?('해지 ('+(plan.cancelledDate||'')+')'):'진행중'].forEach((v,i)=>{
+      const td=row.appendChild(document.createElement('td'));td.textContent=v;
+      if(i===6)td.style.color=isCancelled?'#f87171':'#3dc87a';
+      if(i===2)td.style.cssText='color:#818cf8;font-size:12px;';
+    });
+    const atd=row.appendChild(document.createElement('td'));
+    if(!isCancelled){
+      const cb=atd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'해지'}));
+      cb.style.cssText='padding:4px 10px;font-size:11px;color:#f87171;border-color:#f87171;';
+      cb.onclick=()=>{if(!confirm(mb.name+' 님의 개인레슨 등록을 해지하시겠습니까?'))return;
+        plan.status='cancelled';plan.cancelledDate=_grpFmtD(new Date());sv('jbog10_mb',members);renderPcContent();};
+    } else {
+      const rb=atd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'재등록'}));
+      rb.style.cssText='padding:4px 10px;font-size:11px;color:#3dc87a;border-color:#3dc87a;';
+      rb.onclick=()=>{if(!confirm(mb.name+' 님의 개인레슨을 재등록하시겠습니까?'))return;
+        plan.status='active';plan.cancelledDate=null;sv('jbog10_mb',members);renderPcContent();};
     }
   });
 }
@@ -7534,11 +7689,12 @@ function dlSessionsXLSX(){
   const wsData=[['TheLine CRM - 세션로그 (이용권별)'],['기간: '+pcSalStart+' ~ '+pcSalEnd],[]];
   wsData.push(['계약일','회원명','세션','계약료','부가세 전 계약료','세션단가','누적진행(당월제외)','이달수업','잔여수업']);
   const sd=new Date(pcSalStart),ed=new Date(pcSalEnd);ed.setHours(23,59,59);
-  const typeMap2={PT:['25분 수업','50분 수업'],OT:['OT'],consult:['상담'],etc:['기타']};
+  const typeMap2={OT:['OT'],consult:['상담'],etc:['기타']};
   const periodSl=slots.filter(s=>{
     const d=new Date(s.date);
     if(!(d>=sd&&d<=ed))return false;
     if(pcSalTr&&s.trainerId!==pcSalTr)return false;
+    if(pcSesType==='PT')return (s.type||'').includes('수업');
     if(pcSesType){const allowed=typeMap2[pcSesType];return allowed&&allowed.some(t=>s.type===t||(!s.type&&pcSesType==='etc'));}
     return s.type!=='OT'&&s.type!=='상담';
   });
@@ -7750,6 +7906,85 @@ function openPcDayView(ds){
   },{});
 }
 
+function openPcAddSchedule(dateStr){
+  const d=dateStr?new Date(dateStr+'T00:00:00'):new Date();
+  const selDate=dateStr||(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'));
+  pcModal((box,close)=>{
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'일정 추가'}));
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub',textContent:selDate}));
+
+    const r1=box.appendChild(document.createElement('div'));r1.className='pcm-row2';
+    const trF=r1.appendChild(_f('강사',true));
+    const trS=trF.appendChild(_sel(trainers.map(t=>({v:t.id,l:t.name}))));
+    if(curUser&&trainers.some(t=>t.id===curUser))trS.value=curUser;
+    const dateF=r1.appendChild(_f('날짜',true));
+    const dateI=dateF.appendChild(_inp('','date'));dateI.value=selDate;
+
+    const r2=box.appendChild(document.createElement('div'));r2.className='pcm-row2';
+    const timeF=r2.appendChild(_f('시간',true));
+    const timeS=timeF.appendChild(_sel(TIMES.map(t=>({v:t,l:t}))));
+    const mbF=r2.appendChild(_f('회원'));
+    const mbS=mbF.appendChild(_sel([{v:'',l:'-- 회원 없음 --'},...members.map(m=>({v:m.id,l:m.name}))]));
+
+    const tyF=box.appendChild(_f('일정 유형',true));
+    const tyWrap=tyF.appendChild(document.createElement('div'));
+
+    const planF=box.appendChild(_f('개인레슨 요금제'));
+    const planWrap=planF.appendChild(document.createElement('div'));
+
+    const moF=box.appendChild(_f('메모 (선택)'));const moI=moF.appendChild(_inp('메모'));
+
+    let tySel=null,selectedPlanId=null;
+    function updatePlans(){
+      planWrap.innerHTML='';selectedPlanId=null;
+      const mbId=mbS.value;const mb=mbId?members.find(m=>m.id===mbId):null;
+      const ty=tySel?tySel.value:'';
+      if(!mb||ty!=='개인레슨 수업'){planF.style.display='none';return;}
+      const ptPlans=(mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&!p.refunded&&p.status!=='cancelled');
+      if(!ptPlans.length){planF.style.display='none';return;}
+      planF.style.display='block';
+      const plS=planWrap.appendChild(_sel(ptPlans.map(p=>({v:p.id,l:(p.productName||'개인레슨')+' · 회당 '+(p.pricePerSession||0).toLocaleString()+'원'}))));
+      selectedPlanId=ptPlans[0].id;plS.value=selectedPlanId;
+      plS.onchange=()=>selectedPlanId=plS.value;
+    }
+    function updateTypes(){
+      tyWrap.innerHTML='';
+      const mbId=mbS.value;const mb=mbId?members.find(m=>m.id===mbId):null;
+      let types=[];
+      if(mb){
+        const ptPlans=(mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&!p.refunded&&p.status!=='cancelled');
+        if(ptPlans.length)types.push('개인레슨 수업');
+        types.push('OT');
+      } else {
+        types=['OT','상담','차단'];
+      }
+      const curTr=trainers.find(t=>t.id===trS.value);
+      if(curTr&&curTr.role==='관리자'&&!types.includes('상담'))types.push('상담');
+      tySel=tyWrap.appendChild(_sel(types.map(t=>({v:t,l:t}))));
+      tySel.onchange=updatePlans;
+      updatePlans();
+    }
+    mbS.onchange=()=>updateTypes();
+    updateTypes();
+
+    const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='20px';
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'추가'})).onclick=()=>{
+      const tid=trS.value;if(!tid){alert('강사를 선택해주세요.');return;}
+      const dt=dateI.value;if(!dt){alert('날짜를 선택해주세요.');return;}
+      const tm=timeS.value;
+      const mbId=mbS.value||null;
+      const ty=tySel?tySel.value:'OT';
+      const planId=(mbId&&ty==='개인레슨 수업')?selectedPlanId:null;
+      if(mbId&&ty==='개인레슨 수업'&&!planId){alert('개인레슨 요금제를 선택해주세요.');return;}
+      const _newSlot={id:'s'+Date.now(),trainerId:tid,memberId:mbId,planId,date:dt,time:tm,type:ty,memo:moI.value.trim()};
+      slots.push(_newSlot);sv('jbog10_sl',slots);
+      if(mbId)writeCrmBk(_newSlot);
+      close();renderPcContent();
+    };
+  },{});
+}
+
 
 function openPcSlotDetail(slotId){
   const s=slots.find(x=>x.id===slotId);if(!s)return;
@@ -7807,7 +8042,7 @@ function openPcSlotDetail(slotId){
       const tmS=tmF.appendChild(_sel(TIMES.map(t=>({v:t,l:t}))));tmS.value=s.time;
 
       const r3=editForm.appendChild(document.createElement('div'));r3.className='pcm-row2';
-      const tyF=r3.appendChild(_f('유형'));const tyS=tyF.appendChild(_sel(['OT','25분 수업','50분 수업','상담'].map(v=>({v,l:v}))));tyS.value=s.type||'25분 수업';
+      const tyF=r3.appendChild(_f('유형'));const tyS=tyF.appendChild(_sel(['개인레슨 수업','OT','상담','차단'].map(v=>({v,l:v}))));tyS.value=s.type||'개인레슨 수업';
       const trF=r3.appendChild(_f('강사'));const trS=trF.appendChild(_sel([{v:'',l:'선택'},...trainers.map(t=>({v:t.id,l:t.name}))]));if(s.trainerId)trS.value=s.trainerId;
 
       // 수업권 선택
