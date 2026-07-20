@@ -5876,7 +5876,20 @@ function openPcCreateProduct(onCreated){
     const durRow=box.appendChild(_f('수업 시간'));const durS=durRow.appendChild(_inp('예) 25','number'));durS.min='1';durS.style.width='100%';durS.value='25';
     // 그룹수업 전용 필드
     const grpRow=box.appendChild(_f('연결 그룹수업'));
-    const grpS=grpRow.appendChild(_sel([{v:'',l:'선택 안함'},...groupClasses.filter(g=>g.active!==false).map(g=>({v:g.id,l:g.name}))]));
+    const grpWrap=grpRow.appendChild(document.createElement('div'));grpWrap.style.cssText='display:flex;gap:8px;';
+    const grpS=grpWrap.appendChild(_sel([{v:'',l:'선택 안함'},...groupClasses.filter(g=>g.active!==false).map(g=>({v:g.id,l:g.name}))]));
+    grpS.style.flex='1';
+    function refreshGrpOptions(selectId){
+      grpS.innerHTML='';
+      [{v:'',l:'선택 안함'},...groupClasses.filter(g=>g.active!==false).map(g=>({v:g.id,l:g.name}))].forEach(o=>{
+        const op=document.createElement('option');op.value=o.v;op.textContent=o.l;grpS.appendChild(op);
+      });
+      if(selectId)grpS.value=selectId;
+    }
+    const newGrpBtn=grpWrap.appendChild(document.createElement('button'));
+    newGrpBtn.type='button';newGrpBtn.textContent='+ 새로 만들기';
+    newGrpBtn.style.cssText='padding:0 14px;border-radius:9px;border:1px solid #818cf8;background:transparent;color:#818cf8;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;';
+    newGrpBtn.onclick=()=>{openGrpClassModal(null,(newGc)=>{refreshGrpOptions(newGc.id);});};
     grpRow.style.display='none';
     const grpSpmRow=box.appendChild(_f('월 수업 횟수'));const grpSpmI=grpSpmRow.appendChild(_inp('예) 8','number'));grpSpmI.min='1';grpSpmI.style.width='100%';
     grpSpmRow.style.display='none';
@@ -6991,7 +7004,7 @@ function _renderGrpMembers(ct){
   renderTable();
 }
 
-function openGrpClassModal(gc){
+function openGrpClassModal(gc,onSaved){
   const DAY_NS=['일','월','화','수','목','금','토'];
   pcModal((box,close)=>{
     box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:gc?'수업 수정':'그룹 수업 추가'}));
@@ -7026,7 +7039,8 @@ function openGrpClassModal(gc){
       const pps=parseInt(priceI.value)||0;if(!pps){err.textContent='회당 금액을 입력해주세요.';return;}
       const obj={name,trainerId:trS.value||null,capacity:cap,pricePerSession:pps,time:timeI.value,duration:parseInt(durI.value)||50,days,active:true,createdAt:gc?.createdAt||Date.now()};
       if(gc?.id)obj.id=gc.id;
-      await svGrpClass(obj);close();renderPcContent();
+      await svGrpClass(obj);close();
+      if(onSaved)onSaved(obj);else renderPcContent();
     };
   });
 }
