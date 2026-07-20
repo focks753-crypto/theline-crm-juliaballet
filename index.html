@@ -4737,8 +4737,8 @@ function renderRegStep1(box,close,reg){
   const inflowS=inflowF.appendChild(_sel([{v:'',l:'선택 안함'},...(INFLOW_OPTIONS||['워크인','플러팅','구글폼','골프상담','기타']).map(v=>({v,l:v}))]));
   inflowS.style.padding='10px 12px';if(reg.inflow)inflowS.value=reg.inflow;
 
-  const purposeF=grid.appendChild(_f('운동 목적'));purposeF.style.gridColumn='1/-1';
-  const purposeS=purposeF.appendChild(_sel([{v:'',l:'선택 안함'},'다이어트','근육 증가','재활','건강 관리','골프 퍼포먼스','기타'].map(v=>typeof v==='string'?{v,l:v}:v)));
+  const purposeF=grid.appendChild(_f('등록 목적'));purposeF.style.gridColumn='1/-1';
+  const purposeS=purposeF.appendChild(_sel([{v:'',l:'선택 안함'},'취미 및 체력 증진','바른 자세 및 성장 발달','유연성·균형감각 향상','자신감 및 표현력 향상','전공반 준비','콩쿨 및 입시 준비','기타'].map(v=>typeof v==='string'?{v,l:v}:v)));
   purposeS.style.padding='10px 12px';if(reg.purpose)purposeS.value=reg.purpose;
 
   // 버튼
@@ -4961,7 +4961,7 @@ function renderMbDetailModal(box,close,mbId){
     ['성별',mb.gender||'미입력'],['생년월일',mb.birthdate||'미입력'],
     ['연락처',mb.phone||'미입력'],['주소',mb.address||'미입력'],
     ['담당자',tr2?tr2.name:'없음'],['특이사항',mb.notes||'-'],
-    ['방문경로',mb.inflow||'선택 안함'],['운동목적',mb.purpose||'선택 안함'],
+    ['방문경로',mb.inflow||'선택 안함'],['등록목적',mb.purpose||'선택 안함'],
     ['등록일',mb.registeredAt?new Date(mb.registeredAt).toLocaleDateString('ko-KR'):''],
   ];
   infoItems.forEach(([k,v])=>{
@@ -5915,7 +5915,7 @@ function openPcEditMemberModal(mbId,parentBox,parentClose){
     const infF=r3.appendChild(_f('유입경로'));const infI=infF.appendChild(_sel([{v:'',l:'선택 안함'},...(INFLOW_OPTIONS||[]).map(v=>({v,l:v}))]));if(mb.inflow)infI.value=mb.inflow;
     const r4=box.appendChild(document.createElement('div'));r4.className='pcm-row2';
     const trF=r4.appendChild(_f('담당자'));const trI=trF.appendChild(_sel([{v:'',l:'없음'},...trainers.map(t=>({v:t.id,l:t.name}))]));if(mb.trainerId)trI.value=mb.trainerId;
-    const purF=r4.appendChild(_f('운동목적'));const purI=purF.appendChild(_sel([{v:'',l:'선택 안함'},'다이어트','근육 증가','재활','건강 관리','골프 퍼포먼스','기타'].map(v=>typeof v==='string'?{v,l:v}:v)));if(mb.purpose)purI.value=mb.purpose;
+    const purF=r4.appendChild(_f('등록목적'));const purI=purF.appendChild(_sel([{v:'',l:'선택 안함'},'취미 및 체력 증진','바른 자세 및 성장 발달','유연성·균형감각 향상','자신감 및 표현력 향상','전공반 준비','콩쿨 및 입시 준비','기타'].map(v=>typeof v==='string'?{v,l:v}:v)));if(mb.purpose)purI.value=mb.purpose;
     const bdF=box.appendChild(_f('생년월일'));const bdI=bdF.appendChild(_inp(''));bdI.type='date';bdI.style.colorScheme='dark';bdI.style.cursor='pointer';bdI.value=mb.birthdate||'';
     const adF=box.appendChild(_f('주소'));const adI=adF.appendChild(_inp(''));adI.value=mb.address||'';
     const noF=box.appendChild(_f('특이사항'));const noTA=noF.appendChild(document.createElement('textarea'));noTA.className='pcm-textarea';noTA.value=mb.notes||'';
