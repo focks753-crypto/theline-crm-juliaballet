@@ -2489,9 +2489,8 @@ function openEditPlan(memberId,planId){
   const iSt='width:100%;padding:13px 14px;border:1px solid var(--bd2);border-radius:10px;background:var(--bg2);color:var(--t1);font-size:15px;';
   showSheet(function(sheet,close){
     sheet.appendChild(el('div','shdl'));sheet.appendChild(mk('h3','','수업권 수정'));sheet.appendChild(mk('div','shsub',mb.name));
-    sheet.appendChild(mk('label','','수업 시간'));
-    const dsel=sheet.appendChild(el('select'));dsel.style.cssText=iSt;
-    [{v:25,l:'25분'},{v:50,l:'50분'}].forEach(opt=>{const o=dsel.appendChild(document.createElement('option'));o.value=opt.v;o.textContent=opt.l;if(opt.v===(p.duration||25))o.selected=true;});
+    sheet.appendChild(mk('label','','수업 시간 (분)'));
+    const dsel=sheet.appendChild(el('input'));dsel.type='number';dsel.min='1';dsel.style.cssText=iSt;dsel.value=p.duration||25;
     sheet.appendChild(mk('label','','수업 횟수'));
     const ssel=sheet.appendChild(el('select'));ssel.style.cssText=iSt;
     SESSION_OPTIONS.forEach(n=>{const o=ssel.appendChild(document.createElement('option'));o.value=n;o.textContent=n+'회권';if(n===p.sessions)o.selected=true;});
@@ -2805,10 +2804,7 @@ function renderAdmPkg(ct){
   // 수업 횟수
   const r3b=form.appendChild(el('div','r2'));
   const sessI=r3b.appendChild(el('input'));sessI.type='number';sessI.placeholder='횟수';sessI.style.cssText=iSt;
-  const durS=r3b.appendChild(el('select'));durS.style.cssText=iSt;
-  [{v:0,l:'수업시간 없음'},{v:25,l:'25분'},{v:50,l:'50분'}].forEach(({v,l})=>{
-    const o=durS.appendChild(document.createElement('option'));o.value=v;o.textContent=l;
-  });
+  const durS=r3b.appendChild(el('input'));durS.type='number';durS.min='0';durS.placeholder='수업 시간(분)';durS.style.cssText=iSt;
 
   form.appendChild(mk('button','sbtn','+ 상품 추가')).onclick=()=>{
     const name=ni.value.trim();const price=parseMoney(priceI.value);
@@ -3780,7 +3776,7 @@ function showSheet(builder){
 
 function renderPlanForm(sheet){
   const iSt='width:100%;padding:13px 14px;border:1px solid var(--bd2);border-radius:10px;background:var(--bg2);color:var(--t1);font-size:15px;';
-  sheet.appendChild(mk('label','','수업 시간'));const dsel=sheet.appendChild(el('select'));dsel.id='pf-d';[{v:25,l:'25분'},{v:50,l:'50분'}].forEach(opt=>{const o=dsel.appendChild(document.createElement('option'));o.value=opt.v;o.textContent=opt.l;});
+  sheet.appendChild(mk('label','','수업 시간 (분)'));const dsel=sheet.appendChild(el('input'));dsel.id='pf-d';dsel.type='number';dsel.min='1';dsel.value='25';dsel.style.cssText=iSt;
   sheet.appendChild(mk('label','','수업 횟수'));const sw=sheet.appendChild(el('div'));sw.id='pf-sw';
   sheet.appendChild(mk('label','','금액'));const pw=sheet.appendChild(el('div'));pw.id='pf-pw';
   function buildSess(){
@@ -5832,8 +5828,8 @@ function openPcEditProduct(prodId,onSaved){
     if(p.type==='pt'){
       const sessS=sessRow.appendChild(_inp('예) 10','number'));sessS.min='1';sessS.style.width='100%';
       if(p.sessions)sessS.value=p.sessions;
-      const durS=durRow.appendChild(_sel([{v:25,l:'25분'},{v:50,l:'50분'}]));
-      if(p.duration)durS.value=p.duration;
+      const durS=durRow.appendChild(_inp('예) 25','number'));durS.min='1';durS.style.width='100%';
+      durS.value=p.duration||25;
       const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='24px';
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
@@ -5877,7 +5873,7 @@ function openPcCreateProduct(onCreated){
         grpRow.style.display=selType==='group'?'block':'none';grpSpmRow.style.display=selType==='group'?'block':'none';};
     });
     const sessRow=box.appendChild(_f('횟수 (수업)'));const sessS=sessRow.appendChild(_inp('예) 10','number'));sessS.min='1';sessS.style.width='100%';
-    const durRow=box.appendChild(_f('수업 시간'));const durS=durRow.appendChild(_sel([{v:25,l:'25분'},{v:50,l:'50분'}]));
+    const durRow=box.appendChild(_f('수업 시간'));const durS=durRow.appendChild(_inp('예) 25','number'));durS.min='1';durS.style.width='100%';durS.value='25';
     // 그룹수업 전용 필드
     const grpRow=box.appendChild(_f('연결 그룹수업'));
     const grpS=grpRow.appendChild(_sel([{v:'',l:'선택 안함'},...groupClasses.filter(g=>g.active!==false).map(g=>({v:g.id,l:g.name}))]));
