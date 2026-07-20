@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 앱을 거치지 않은 임의 스크립트/크롤러의 직접 접근을 막기 위해
+    // 최소한 (익명이라도) 인증된 요청만 허용합니다.
+    // 참고: 이 앱은 아직 직원별 로그인이 Firebase Auth에 연결되어 있지 않아
+    // "관리자만" 같은 세밀한 권한 제어는 불가능합니다 (모든 로그인 사용자가 동일 권한).
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

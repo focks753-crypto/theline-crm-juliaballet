@@ -823,17 +823,24 @@ input[type=time]::-webkit-calendar-picker-indicator:hover{opacity:1;}
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script>
 // ── Firebase 동적 로딩 ──
 let db = null;
 function loadFirebaseSDK(cb){
-  if(typeof firebase!=='undefined'){initFB();cb();return;}
+  if(typeof firebase!=='undefined'){Promise.resolve(initFB()).then(cb);return;}
   var s1=document.createElement('script');
   s1.src='https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js';
   s1.onload=function(){
     var s2=document.createElement('script');
     s2.src='https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js';
-    s2.onload=function(){initFB();cb();};
+    s2.onload=function(){
+      var s3=document.createElement('script');
+      s3.src='https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js';
+      s3.onload=function(){Promise.resolve(initFB()).then(cb);};
+      s3.onerror=function(){console.warn('Firebase Auth 로드 실패');Promise.resolve(initFB()).then(cb);};
+      document.head.appendChild(s3);
+    };
     s2.onerror=function(){console.warn('Firestore 로드 실패');cb();};
     document.head.appendChild(s2);
   };
@@ -842,13 +849,17 @@ function loadFirebaseSDK(cb){
 }
 function initFB(){
   try{
-    // TODO: 줄리아발레아카데미용 새 Firebase 프로젝트 만든 뒤 아래 값을 그 프로젝트의 설정값으로 교체할 것.
-    // 절대 orangegolfzone(더라인 헬스장) 설정을 그대로 쓰지 말 것 — 실제 회원 데이터가 섞임.
-    var cfg={apiKey:"REPLACE_ME",authDomain:"REPLACE_ME.firebaseapp.com",projectId:"REPLACE_ME",storageBucket:"REPLACE_ME.firebasestorage.app",messagingSenderId:"REPLACE_ME",appId:"REPLACE_ME"};
+    var cfg={apiKey:"AIzaSyAjMeD2YkZtir7nss8mndmi9NFSN8vrNZg",authDomain:"thelinecrm-juliaballet.firebaseapp.com",projectId:"thelinecrm-juliaballet",storageBucket:"thelinecrm-juliaballet.firebasestorage.app",messagingSenderId:"1025024547983",appId:"1:1025024547983:web:0a6794cb5495977d7564fa"};
     if(!firebase.apps.length)firebase.initializeApp(cfg);
     db=firebase.firestore();
     console.log('Firebase 연결 성공 ✅');
+    // 익명 인증 — Firestore 보안 규칙이 request.auth != null을 요구하므로,
+    // 다른 데이터를 읽기 전에 인증이 끝날 때까지 기다린다 (경합 상태 방지).
+    if(firebase.auth){
+      return firebase.auth().signInAnonymously().catch(e=>console.warn('익명 로그인 실패:',e.message));
+    }
   }catch(e){console.warn('Firebase 초기화 실패:',e.message);}
+  return Promise.resolve();
 }
 </script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
