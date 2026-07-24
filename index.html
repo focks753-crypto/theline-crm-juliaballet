@@ -3882,6 +3882,7 @@ function dlSalesCSV(rows,total){
     /* 보호: 파이어베이스가 비어 보여도 로컬 기본값을 통째로 밀어넣지 않음(데이터 덮어쓰기 방지). 필요 시 설정에서 수동 동기화 사용 */
     // if(!hasFirebaseData&&db&&trainers.length>0){await pushAllToFirebase();}
     if(gateHint)gateHint.textContent='센터 코드 입력';
+    try{ensurePtRecurringSlots();}catch(e){}
     startRealtimeSync();
   }catch(e){console.warn('Firebase 로드 실패, 로컬 데이터 사용');}
   initGate();
@@ -4331,7 +4332,7 @@ const PC_NAV=[
   {id:'sales',label:'매출관리',icon:'',subs:[{id:'all',label:'매출내역'},{id:'bypkg',label:'상품별내역'},{id:'bypay',label:'결제수단별'},{id:'sessions',label:'세션로그'},{id:'ptbilling',label:'개인레슨 청구'},{id:'refund',label:'환불내역'}]},
   {id:'groupclass',label:'그룹수업',icon:'',subs:[{id:'month',label:'월간 현황'},{id:'billing',label:'청구 관리'},{id:'config',label:'수업 설정'},{id:'members',label:'회원 현황'}]},
   {id:'settings',label:'센터설정',icon:'',subs:[{id:'staff',label:'직원관리'},{id:'pkg',label:'상품관리'},{id:'avail',label:'예약설정'}]},
-  {id:'calendar',label:'캘린더',icon:''},
+  {id:'calendar',label:'레슨일정',icon:''},
   {id:'bookings',label:'예약관리',icon:''},
   {id:'analytics',label:'분석',icon:'',adminOnly:true},
 ];
@@ -5467,6 +5468,7 @@ function renderPcSessions(ct,acts){
 
 // ── 캘린더 ──────────────────────────────────────────────────────────────
 function renderPcCal(ct,acts){
+  ensurePtRecurringSlots();
   if(acts){acts.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn pri',textContent:'+ 일정 추가'})).onclick=()=>openPcAddSchedule();}
   const hdr=ct.appendChild(Object.assign(document.createElement('div'),{style:'display:flex;align-items:center;gap:12px;margin-bottom:16px;'}));
   hdr.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'◀'})).onclick=()=>{pcCalM--;if(pcCalM<0){pcCalM=11;pcCalY--;}renderPcContent();};
@@ -6188,10 +6190,37 @@ function renderMbPlanCard(container, mb, p, box, close) {
     const curMonth=_grpFmtD(new Date()).slice(0,7);
     const monthSess=getPtMemberMonthCompleted(mb.id,p.id,curMonth);
     const bill=ptBillings.find(b=>b.memberId===mb.id&&b.planId===p.id&&b.month===curMonth);
+    const DAY_RC=['일','월','화','수','목','금','토'];
+    const recStr=(p.recurring&&(p.recurring.days||[]).length)?((p.recurring.days.slice().sort((a,b)=>a-b).map(d=>DAY_RC[d]).join('/'))+' '+p.recurring.time):null;
     info.innerHTML='회당 '+(p.pricePerSession||0).toLocaleString()+'원 · '+(p.duration||'?')+'분<br>'
       +'등록일: '+p.startDate+(p.cancelledDate?' · 해지: '+p.cancelledDate:'')+'<br>'
+      +(recStr?'<span style="color:#818cf8;">고정수업: '+recStr+'</span><br>':'')
       +'이번 달 완료 수업: <strong style="color:#3dc87a;">'+monthSess+'회</strong>'
       +(bill&&bill.amount>0?(' = '+bill.amount.toLocaleString()+'원 · '+(bill.paid?'<span style="color:#3dc87a;">결제완료</span>':'<span style="color:#f87171;">미결제</span>')):'');
+    // 고정수업 등록/관리 버튼
+    if(p.status!=='cancelled'){
+      const recRow=card.appendChild(document.createElement('div'));recRow.style.cssText='display:flex;gap:6px;margin-top:10px;';
+      if(recStr){
+        const editRecBtn=recRow.appendChild(Object.assign(document.createElement('button'),{textContent:'고정수업 수정'}));
+        editRecBtn.style.cssText='padding:5px 12px;border-radius:6px;border:1px solid #2a3050;background:transparent;color:#818cf8;font-size:11px;font-weight:600;cursor:pointer;';
+        editRecBtn.onclick=()=>openPtRecurringModal(mb,p,box,close);
+        const cancelRecBtn=recRow.appendChild(Object.assign(document.createElement('button'),{textContent:'고정수업 해지'}));
+        cancelRecBtn.style.cssText='padding:5px 12px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:transparent;color:#f87171;font-size:11px;font-weight:600;cursor:pointer;';
+        cancelRecBtn.onclick=()=>{
+          if(!confirm('고정수업을 해지하시겠습니까?\n아직 진행하지 않은 예정 일정은 삭제되고, 이미 진행된 수업은 유지됩니다.'))return;
+          const todayStr=_grpFmtD(new Date());
+          const toDel=slots.filter(s=>s.recurId===p.id&&s.date>todayStr);
+          toDel.forEach(s=>{if(s.bkId)firebase.firestore().collection('jbog10_bk').doc(s.bkId).delete().catch(()=>{});});
+          slots=slots.filter(s=>!(s.recurId===p.id&&s.date>todayStr));sv('jbog10_sl',slots);
+          delete p.recurring;sv('jbog10_mb',members);
+          renderMbDetailModal(box,close,mb.id);
+        };
+      } else {
+        const addRecBtn=recRow.appendChild(Object.assign(document.createElement('button'),{textContent:'+ 고정수업 등록 (요일/시간)'}));
+        addRecBtn.style.cssText='padding:5px 12px;border-radius:6px;border:1px solid #818cf8;background:transparent;color:#818cf8;font-size:11px;font-weight:600;cursor:pointer;';
+        addRecBtn.onclick=()=>openPtRecurringModal(mb,p,box,close);
+      }
+    }
     return;
   }
   const card = container.appendChild(document.createElement('div'));
@@ -6657,6 +6686,39 @@ async function svPtBilling(bill){
     sv('jbog10_ptbl',ptBillings);
   }catch(e){alert('저장 실패');}
 }
+// ── 개인레슨 고정 수업(요일별 반복) 자동 슬롯 생성 ─────────────────────────
+// plan.recurring = {days:[요일번호...], time:'HH:MM', trainerId, startDate, skipDates:[...]}
+// 오늘부터 다음달 말까지, 요일에 해당하는 날짜에 레슨 슬롯을 자동 생성함(과거 소급 생성 안 함).
+// 이미 그 plan으로 같은 날짜에 슬롯이 있거나, skipDates에 있으면 건너뜀.
+function ensurePtRecurringSlots(){
+  const today=new Date();today.setHours(0,0,0,0);
+  const horizon=new Date(today.getFullYear(),today.getMonth()+2,0);horizon.setHours(0,0,0,0);
+  let changed=false;
+  members.forEach(mb=>{
+    (mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&p.status!=='cancelled'&&p.recurring&&(p.recurring.days||[]).length&&p.recurring.time).forEach(plan=>{
+      const rec=plan.recurring;const skip=new Set(rec.skipDates||[]);
+      const recStart=new Date((rec.startDate||plan.startDate||_grpFmtD(today))+'T00:00:00');recStart.setHours(0,0,0,0);
+      let cur=new Date(Math.max(today.getTime(),recStart.getTime()));cur.setHours(0,0,0,0);
+      for(let d=new Date(cur);d<=horizon;d.setDate(d.getDate()+1)){
+        if(!rec.days.includes(d.getDay()))continue;
+        const ds=_grpFmtD(d);
+        if(skip.has(ds))continue;
+        if(slots.some(s=>s.planId===plan.id&&s.date===ds))continue;
+        slots.push({id:'s'+Date.now()+'_'+Math.random().toString(36).slice(2),trainerId:rec.trainerId||mb.trainerId||null,memberId:mb.id,planId:plan.id,date:ds,time:rec.time,type:'개인레슨 수업',memo:'고정수업',recurId:plan.id});
+        changed=true;
+      }
+    });
+  });
+  if(changed)sv('jbog10_sl',slots);
+  return changed;
+}
+// 고정수업 슬롯 삭제 시 재생성 방지용: 해당 날짜를 skipDates에 기록
+function recordRecurSkip(slot){
+  if(!slot||!slot.recurId)return;
+  const mb=members.find(m=>(m.plans||[]).some(p=>p.id===slot.recurId));if(!mb)return;
+  const plan=mb.plans.find(p=>p.id===slot.recurId);
+  if(plan&&plan.recurring){plan.recurring.skipDates=[...new Set([...(plan.recurring.skipDates||[]),slot.date])];sv('jbog10_mb',members);}
+}
 function getGrpMonthRange(){
   const today=new Date();
   const base=new Date(today.getFullYear(),today.getMonth()+grpMonthOff,1);
@@ -6849,6 +6911,7 @@ function _renderGrpBilling(ct){
 
 // ── 개인레슨 청구 관리 ────────────────────────────────────────────────────
 function _renderPtBilling(ct){
+  ensurePtRecurringSlots();
   ensurePtBillings();
   const today=new Date();
   const base=new Date(today.getFullYear(),today.getMonth()+ptBillMonthOff,1);
@@ -7207,6 +7270,50 @@ function openGrpClassModal(gc,onSaved){
       if(gc?.id)obj.id=gc.id;
       await svGrpClass(obj);close();
       if(onSaved)onSaved(obj);else renderPcContent();
+    };
+  });
+}
+
+// 개인레슨 고정수업(요일/시간) 등록·수정 모달
+function openPtRecurringModal(mb,plan,parentBox,parentClose){
+  const DAY_NS=['일','월','화','수','목','금','토'];
+  const rec=plan.recurring||{};
+  pcModal((box,close)=>{
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'고정수업 '+(plan.recurring?'수정':'등록')}));
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub',textContent:mb.name+' · '+(plan.productName||'개인레슨')+' (회당 '+(plan.pricePerSession||0).toLocaleString()+'원)'}));
+    const trF=box.appendChild(_f('담당 강사'));
+    const trS=trF.appendChild(_sel([{v:'',l:'선택 안함'},...trainers.map(t=>({v:t.id,l:t.name}))]));
+    if(rec.trainerId)trS.value=rec.trainerId;else if(mb.trainerId)trS.value=mb.trainerId;
+    const r1=box.appendChild(document.createElement('div'));r1.className='pcm-row2';
+    const timeF=r1.appendChild(_f('시간',true));
+    const timeS=timeF.appendChild(_sel(TIMES.map(t=>({v:t,l:t}))));if(rec.time)timeS.value=rec.time;
+    const sdF=r1.appendChild(_f('시작일',true));const sdI=sdF.appendChild(_inp('','date'));sdI.value=rec.startDate||_grpFmtD(new Date());
+    const dayF=box.appendChild(_f('반복 요일',true));
+    const dayW=dayF.appendChild(document.createElement('div'));dayW.style.cssText='display:flex;gap:6px;flex-wrap:wrap;';
+    const dayBtns=DAY_NS.map((name,idx)=>{
+      const btn=dayW.appendChild(document.createElement('button'));btn.type='button';btn.textContent=name;
+      const on=(rec.days||[]).includes(idx);btn._on=on;
+      btn.style.cssText='padding:8px 13px;border-radius:8px;border:1px solid '+(on?'#818cf8':'#1e2026')+';background:'+(on?'#2c2f4a':'transparent')+';color:'+(on?'#818cf8':'#6b7494')+';cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;';
+      btn.onclick=()=>{btn._on=!btn._on;btn.style.borderColor=btn._on?'#818cf8':'#1e2026';btn.style.background=btn._on?'#2c2f4a':'transparent';btn.style.color=btn._on?'#818cf8':'#6b7494';};
+      return{idx,btn};
+    });
+    box.appendChild(Object.assign(document.createElement('div'),{textContent:'선택한 요일/시간에 맞춰 다음 달 말까지 레슨 일정이 자동 생성됩니다. 수업이 끝나면 개인레슨 청구에 자동 반영됩니다.'})).style.cssText='font-size:11px;color:#3a3f58;margin-top:10px;line-height:1.6;';
+    const err=box.appendChild(document.createElement('div'));err.style.cssText='color:#f87171;font-size:12px;min-height:18px;margin-top:4px;';
+    const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='16px';
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
+      const days=dayBtns.filter(d=>d.btn._on).map(d=>d.idx);
+      if(!days.length){err.textContent='반복 요일을 선택해주세요.';return;}
+      if(!timeS.value){err.textContent='시간을 선택해주세요.';return;}
+      if(!sdI.value){err.textContent='시작일을 선택해주세요.';return;}
+      // 기존 고정수업의 미래 예정 슬롯 제거(요일/시간 변경 반영), 지난 수업은 유지
+      const todayStr=_grpFmtD(new Date());
+      slots=slots.filter(s=>!(s.recurId===plan.id&&s.date>todayStr));
+      plan.recurring={days,time:timeS.value,trainerId:trS.value||null,startDate:sdI.value,skipDates:(rec.skipDates||[]).filter(ds=>ds>todayStr)};
+      sv('jbog10_mb',members);
+      ensurePtRecurringSlots();
+      close();
+      if(parentBox&&parentClose)renderMbDetailModal(parentBox,parentClose,mb.id);else renderPcContent();
     };
   });
 }
@@ -7904,6 +8011,7 @@ function openPcDayView(ds){
         delBtn.onclick=()=>{
           if(!confirm((mb?mb.name:'이 일정')+'을 삭제하시겠습니까?'))return;
           const _dvBkId=s.bkId;
+          recordRecurSkip(s);
           slots=slots.filter(x=>x.id!==s.id);sv('jbog10_sl',slots);
           if(_dvBkId)firebase.firestore().collection('jbog10_bk').doc(_dvBkId).delete().catch(()=>{});
           renderPcContent();renderList();
@@ -8087,6 +8195,7 @@ function openPcSlotDetail(slotId){
     delBtn.onclick=()=>{
       if(!confirm((mb?mb.name:'이 일정')+'을 삭제하시겠습니까?'))return;
       const _bkId=s.bkId;
+      recordRecurSkip(s);
       slots=slots.filter(x=>x.id!==s.id);sv('jbog10_sl',slots);
       if(_bkId)firebase.firestore().collection('jbog10_bk').doc(_bkId).delete().catch(()=>{});
       closeModal();renderPcContent();
