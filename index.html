@@ -6655,7 +6655,9 @@ function ensurePtBillings(){
   const today=new Date();const curMonth=_grpFmtD(today).slice(0,7);
   members.forEach(mb=>{
     (mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&!p.refunded&&p.status!=='cancelled').forEach(plan=>{
-      const startMonth=plan.startDate?plan.startDate.slice(0,7):'';if(!startMonth)return;
+      // 청구 시작월: 등록일과 고정수업 시작일 중 이른 쪽(과거 소급 등록 반영)
+      const startDates=[plan.startDate,plan.recurring&&plan.recurring.startDate].filter(Boolean);
+      const startMonth=startDates.length?startDates.map(x=>x.slice(0,7)).sort()[0]:'';if(!startMonth)return;
       let ym=new Date(startMonth+'-01T00:00:00');
       while(_grpFmtD(ym).slice(0,7)<=curMonth){
         const month=_grpFmtD(ym).slice(0,7);
@@ -6686,17 +6688,20 @@ async function svPtBilling(bill){
 }
 // ── 개인레슨 고정 수업(요일별 반복) 자동 슬롯 생성 ─────────────────────────
 // plan.recurring = {days:[요일번호...], time:'HH:MM', trainerId, startDate, skipDates:[...]}
-// 오늘부터 다음달 말까지, 요일에 해당하는 날짜에 레슨 슬롯을 자동 생성함(과거 소급 생성 안 함).
+// 시작일(과거 포함)부터 다음달 말까지, 요일에 해당하는 날짜에 레슨 슬롯을 자동 생성함.
+// 과거 시작일이면 지난 날짜도 생성됨(이미 진행한 수업 매출 반영). 안전상 최대 1년 전까지만 소급.
 // 이미 그 plan으로 같은 날짜에 슬롯이 있거나, skipDates에 있으면 건너뜀.
 function ensurePtRecurringSlots(){
   const today=new Date();today.setHours(0,0,0,0);
   const horizon=new Date(today.getFullYear(),today.getMonth()+2,0);horizon.setHours(0,0,0,0);
+  const floor=new Date(today);floor.setDate(floor.getDate()-366);floor.setHours(0,0,0,0);
   let changed=false;
   members.forEach(mb=>{
     (mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&p.status!=='cancelled'&&p.recurring&&(p.recurring.days||[]).length&&p.recurring.time).forEach(plan=>{
       const rec=plan.recurring;const skip=new Set(rec.skipDates||[]);
       const recStart=new Date((rec.startDate||plan.startDate||_grpFmtD(today))+'T00:00:00');recStart.setHours(0,0,0,0);
-      let cur=new Date(Math.max(today.getTime(),recStart.getTime()));cur.setHours(0,0,0,0);
+      // 시작일부터 생성(과거 소급 허용), 단 폭주 방지로 최대 1년 전까지만
+      let cur=new Date(Math.max(recStart.getTime(),floor.getTime()));cur.setHours(0,0,0,0);
       for(let d=new Date(cur);d<=horizon;d.setDate(d.getDate()+1)){
         if(!rec.days.includes(d.getDay()))continue;
         const ds=_grpFmtD(d);
@@ -7295,7 +7300,7 @@ function openPtRecurringModal(mb,plan,parentBox,parentClose){
       btn.onclick=()=>{btn._on=!btn._on;btn.style.borderColor=btn._on?'#818cf8':'#1e2026';btn.style.background=btn._on?'#2c2f4a':'transparent';btn.style.color=btn._on?'#818cf8':'#6b7494';};
       return{idx,btn};
     });
-    box.appendChild(Object.assign(document.createElement('div'),{textContent:'선택한 요일/시간에 맞춰 다음 달 말까지 레슨 일정이 자동 생성됩니다. 수업이 끝나면 개인레슨 청구에 자동 반영됩니다.'})).style.cssText='font-size:11px;color:#3a3f58;margin-top:10px;line-height:1.6;';
+    box.appendChild(Object.assign(document.createElement('div'),{textContent:'시작일(과거도 가능)부터 다음 달 말까지 선택한 요일/시간에 레슨 일정이 자동 생성됩니다. 오늘 포함 이미 지난 수업은 바로 매출(개인레슨 청구)에 잡힙니다.'})).style.cssText='font-size:11px;color:#3a3f58;margin-top:10px;line-height:1.6;';
     const err=box.appendChild(document.createElement('div'));err.style.cssText='color:#f87171;font-size:12px;min-height:18px;margin-top:4px;';
     const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='16px';
     btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
