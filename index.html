@@ -7397,14 +7397,7 @@ function openGrpSessionModal(gc,date,sess){
         members.filter(m=>!subIds.includes(m.id)).forEach(m=>{const o=document.createElement('option');o.value=m.id;o.textContent=m.name;memSel.appendChild(o);});
       }
       refreshSel();
-      const payRow=box.appendChild(document.createElement('div'));payRow.style.cssText='display:flex;gap:6px;margin-bottom:8px;';
-      let regPayMethod='카드';const payBtns=[];
-      ['카드','현금','계좌이체'].forEach(pm=>{
-        const b=payRow.appendChild(document.createElement('button'));b.type='button';const on=regPayMethod===pm;
-        b.style.cssText='flex:1;padding:7px;border-radius:8px;border:1.5px solid '+(on?'#818cf8':'#1e2026')+';background:'+(on?'rgba(129,140,248,.1)':'#0f1117')+';color:'+(on?'#818cf8':'#6b7494')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;';
-        b.textContent=pm;payBtns.push({b,pm});
-        b.onclick=()=>{regPayMethod=pm;payBtns.forEach(({b:b2,pm:p2})=>{const on2=regPayMethod===p2;b2.style.borderColor=on2?'#818cf8':'#1e2026';b2.style.background=on2?'rgba(129,140,248,.1)':'#0f1117';b2.style.color=on2?'#818cf8':'#6b7494';});};
-      });
+      box.appendChild(Object.assign(document.createElement('div'),{textContent:'등록하면 이번 달 청구가 미결제로 잡힙니다. 결제 확인 후 청구 관리에서 결제완료를 누르면 매출로 등록됩니다.'})).style.cssText='font-size:11px;color:#3a3f58;margin-bottom:8px;line-height:1.5;';
       const addBtn=box.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'정기 회원으로 등록'}));
       addBtn.style.cssText='width:100%;padding:9px;font-size:13px;margin-bottom:4px;';
       addBtn.onclick=async()=>{
@@ -7416,13 +7409,13 @@ function openGrpSessionModal(gc,date,sess){
         const firstAmount=firstSessions*pps;
         const plan={id:'pl'+Date.now(),productName:gc.name,productType:'group',
           groupClassId:gc.id,pricePerSession:pps,startDate:date,status:'active',
-          paymentMethod:regPayMethod,paymentDate:todayStr2,addedAt:now.getTime()};
+          paymentMethod:null,paymentDate:null,addedAt:now.getTime()};
         mb.plans=mb.plans||[];mb.plans.push(plan);sv('jbog10_mb',members);
         const firstMonth=date.slice(0,7);
         const bill={id:'bill'+Date.now(),memberId:mb.id,memberName:mb.name,planId:plan.id,
           groupClassId:gc.id,groupClassName:gc.name,
           month:firstMonth,sessions:firstSessions,amount:firstAmount,
-          paid:true,paidDate:todayStr2,paymentMethod:regPayMethod,createdAt:now.getTime()};
+          paid:false,paidDate:null,paymentMethod:null,createdAt:now.getTime()};
         await svGrpBilling(bill);
         // 오늘 세션 출석 처리(정원 여유 있을 때만)
         const s=grpSessMap[gc.id+'_'+date]||{classId:gc.id,date,status:'active',reservations:[]};
@@ -7431,7 +7424,7 @@ function openGrpSessionModal(gc,date,sess){
           s.reservations=[...s.reservations,{memberId:mb.id,memberName:mb.name}];
           await svGrpSess(s);attendedToday=true;
         }
-        alert('✅ 정기 회원 등록 완료!\n'+mb.name+' · 첫 달 '+firstSessions+'회 · '+firstAmount.toLocaleString()+'원 ('+regPayMethod+')'+(attendedToday?'\n오늘 수업 출석 처리됨':''));
+        alert('✅ 정기 회원 등록 완료! (미결제)\n'+mb.name+' · 첫 달 '+firstSessions+'회 · '+firstAmount.toLocaleString()+'원'+(attendedToday?'\n오늘 수업 출석 처리됨':'')+'\n\n결제 확인되면 청구 관리에서 결제완료를 눌러주세요.');
         subMems=members.filter(mb2=>(mb2.plans||[]).some(p=>p.productType==='group'&&p.groupClassId===gc.id&&p.status!=='cancelled'));
         reRender();refreshSel();renderPcContent();
       };
