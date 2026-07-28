@@ -5593,19 +5593,23 @@ function renderPcSales(ct,acts){
           delBtn.style.cssText='padding:5px 10px;font-size:11px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:transparent;color:#f87171;cursor:pointer;white-space:nowrap;';
           delBtn.textContent='삭제';
           delBtn.onclick=async()=>{
-            if(!confirm('[관리자] '+r.mbName+' · '+r.plan+' · '+Math.abs(r.amount).toLocaleString()+'원\n이 매출 내역을 삭제할까요?'))return;
+            const isTallyUnpaid=r.billId&&r.isUnpaid;
+            const msg=isTallyUnpaid
+              ? '[관리자] '+r.mbName+' · '+r.plan+'\n\n이 청구는 등록된 레슨/출석을 자동 집계한 것입니다. 레슨이 남아있으면 삭제해도 다시 집계됩니다.\n완전히 없애려면 레슨일정(또는 월간현황 출석)에서 해당 레슨을 지우세요.\n\n그래도 이 청구 행을 삭제할까요?'
+              : '[관리자] '+r.mbName+' · '+r.plan+' · '+Math.abs(r.amount).toLocaleString()+'원\n이 매출 내역을 삭제할까요?';
+            if(!confirm(msg))return;
             if(r.isRefund){
               refunds=refunds.filter(x=>x.memberName!==r.mbName||x.refundAmount!==Math.abs(r.amount));
               sv('jbog10_rf',refunds);
             } else if(r.billId){
-              // 청구(그룹/개인레슨) 삭제 + 해당 월 재생성 억제 + 연결 판매plan 제거
+              // 청구(그룹/개인레슨) 삭제. 결제완료 청구만 재생성 억제(noBillMonths). 미결제(자동집계)는 억제 안 함 → 레슨 남아있으면 다시 집계.
               const arr=r.billKind==='group'?grpBillings:ptBillings;
               const bill=arr.find(b=>b.id===r.billId);
               if(bill){
                 const mb=members.find(m=>m.id===(r.memberId||bill.memberId));
                 if(mb){
                   const plan=(mb.plans||[]).find(p=>p.id===bill.planId);
-                  if(plan){plan.noBillMonths=[...new Set([...(plan.noBillMonths||[]),bill.month])];}
+                  if(plan&&bill.paid){plan.noBillMonths=[...new Set([...(plan.noBillMonths||[]),bill.month])];}
                   mb.plans=(mb.plans||[]).filter(p=>r.billKind==='group'?p.grpBillId!==bill.id:p.ptBillId!==bill.id);
                   sv('jbog10_mb',members);
                 }
