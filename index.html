@@ -5203,15 +5203,7 @@ function openPcPayment(mbId,parentBox,parentClose){
   mbCard.style.cssText='background:#111318;border:1px solid #1e2026;border-radius:10px;padding:14px;margin-bottom:18px;';
   mbCard.innerHTML='<div style="font-size:14px;font-weight:800;color:#e2e8f0;margin-bottom:4px;">'+mb.name+'</div><div style="font-size:12px;color:#4a5068;">'+(mb.phone||'')+' '+(mb.gender?'· '+mb.gender:'')+'</div>';
 
-  // 결제 수단
-  right.appendChild(Object.assign(document.createElement('div'),{textContent:'결제 수단'})).style.cssText='font-size:11px;font-weight:700;color:#3a3f58;letter-spacing:1px;margin-bottom:8px;';
-  const payRow=right.appendChild(document.createElement('div'));payRow.style.cssText='display:flex;gap:6px;margin-bottom:18px;';
-  ['카드','현금','계좌이체'].forEach(pm=>{
-    const btn=payRow.appendChild(document.createElement('button'));
-    btn.style.cssText='flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid '+(selPayMethod===pm?'#818cf8':'#1e2026')+';background:'+(selPayMethod===pm?'rgba(129,140,248,.12)':'#111318')+';color:'+(selPayMethod===pm?'#818cf8':'#6b7494')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap;';
-    btn.textContent=pm;
-    btn.onclick=()=>{selPayMethod=pm;payRow.querySelectorAll('button').forEach(b=>{b.style.borderColor='#1e2026';b.style.background='#111318';b.style.color='#6b7494';});btn.style.borderColor='#818cf8';btn.style.background='rgba(129,140,248,.12)';btn.style.color='#818cf8';};
-  });
+  // (후불 등록이라 결제 수단은 여기서 선택하지 않음 — 청구관리 결제완료 시 지정)
 
   // 결제할 상품
   right.appendChild(Object.assign(document.createElement('div'),{textContent:'결제할 상품'})).style.cssText='font-size:11px;font-weight:700;color:#3a3f58;letter-spacing:1px;margin-bottom:8px;';
@@ -5284,7 +5276,7 @@ function openPcPayment(mbId,parentBox,parentClose){
       // 후불(출석 기반) 등록 — 등록 시점엔 청구/매출 생성 안 함. 월간현황 출석 체크 시 ensureGrpBillings가 청구 생성.
       const plan={id:'pl'+Date.now(),productName:gc.name,productType:'group',billingMode:'postpaid',
         groupClassId:gc.id,pricePerSession:pps,startDate:selStartDate,status:'active',
-        paymentMethod:selPayMethod,addedAt:now.getTime()};
+        paymentMethod:null,addedAt:now.getTime()};
       mb.plans=mb.plans||[];mb.plans.push(plan);sv('jbog10_mb',members);
       closePayModal();
       alert('✅ 그룹수업 등록 완료!\n'+gc.name+' · 회당 '+pps.toLocaleString()+'원\n월간현황에서 출석을 체크하면 그 달 청구에 자동 반영됩니다.');
@@ -5297,7 +5289,7 @@ function openPcPayment(mbId,parentBox,parentClose){
     if(!selPrice){alert('회당 요금을 입력해주세요.');return;}
     const plan={id:'pl'+Date.now(),productId:prod.id,productName:prod.name,productType:'pt',billingMode:'postpaid',
       duration:prod.duration||60,pricePerSession:selPrice,totalPrice:0,sessions:0,status:'active',
-      paymentMethod:selPayMethod,startDate:todayStr,addedAt:now.getTime()};
+      paymentMethod:null,startDate:todayStr,addedAt:now.getTime()};
     mb.plans=mb.plans||[];mb.plans.push(plan);sv('jbog10_mb',members);
     closePayModal();
     alert('✅ 개인레슨 등록 완료!\n'+prod.name+' · 회당 '+selPrice.toLocaleString()+'원\n캘린더에 일정을 등록하면 수업 완료 후 자동으로 청구에 반영됩니다.');
