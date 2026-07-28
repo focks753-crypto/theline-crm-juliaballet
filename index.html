@@ -6601,6 +6601,13 @@ function openPcLogin() {
 function _grpFmtD(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 
 // ── 그룹수업 회원권 헬퍼 ──────────────────────────────────────────────────
+// 특정 날짜의 실제 담당 강사 id 결정 (우선순위: 하루 대타 > 날짜기점 담당변경 > 기본 담당)
+function effectiveGrpTrainerId(gc,dateStr,sess){
+  if(sess&&sess.trainerId)return sess.trainerId; // 이 날짜만 대타
+  const hist=(gc.trainerHistory||[]).filter(h=>h&&h.from&&h.from<=dateStr).sort((a,b)=>a.from<b.from?-1:1);
+  if(hist.length)return hist[hist.length-1].trainerId;
+  return gc.trainerId;
+}
 // 등록일 이후 해당 월 말까지 해당 수업이 몇 회 있는지 계산 (일할계산)
 function calcGrpProrate(startDate,gc){
   const s=new Date(startDate+'T00:00:00');const y=s.getFullYear();const m=s.getMonth();
@@ -7100,12 +7107,14 @@ function _renderGrpMonth(ct){
       const booked=subCount; // 등록 회원 수 기준
       const cap=gc.capacity||1;const pct=booked/cap;
       const sc=isCancelled?'grp-cancel':pct>=1?'grp-full':pct>=0.5?'grp-busy':'grp-avail';
+      const _effTid=effectiveGrpTrainerId(gc,dateStr,sess);
       const _subT=(sess&&sess.trainerId&&sess.trainerId!==gc.trainerId);
-      const trName=(trainers.find(t=>t.id===((sess&&sess.trainerId)||gc.trainerId))||{name:''}).name;
+      const _tag=_subT?' (대타)':(_effTid!==gc.trainerId?' (담당변경)':'');
+      const trName=(trainers.find(t=>t.id===_effTid)||{name:''}).name;
       const slot=cell.appendChild(document.createElement('div'));slot.className='grp-slot-sm '+sc;
-      slot.title=gc.name+(gc.time?' ('+gc.time+')':'')+(trName?' · '+trName+(_subT?'(대타)':''):'')+(isCancelled?' [폐강]':' '+booked+'/'+cap+'명');
+      slot.title=gc.name+(gc.time?' ('+gc.time+')':'')+(trName?' · '+trName+_tag:'')+(isCancelled?' [폐강]':' '+booked+'/'+cap+'명');
       slot.innerHTML='<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+gc.name+(isCancelled?' <span style="opacity:.7">폐강</span>':'<span style="opacity:.85"> '+booked+'/'+cap+'</span>')+'</div>'
-        +(trName?'<div style="font-size:9px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+trName+(_subT?' (대타)':'')+'</div>':'');
+        +(trName?'<div style="font-size:9px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+trName+_tag+'</div>':'');
       slot.onclick=()=>openGrpSessionModal(gc,dateStr,sess);
     });
   }
@@ -7291,6 +7300,7 @@ function openGrpClassModal(gc,onSaved){
       const days=dayBtns.filter(d=>d.btn._on).map(d=>d.idx);if(!days.length){err.textContent='요일을 선택해주세요.';return;}
       const pps=parseInt(priceI.value)||0;if(!pps){err.textContent='회당 금액을 입력해주세요.';return;}
       const obj={name,trainerId:trS.value||null,capacity:cap,pricePerSession:pps,time:timeI.value,duration:parseInt(durI.value)||50,days,active:true,createdAt:gc?.createdAt||Date.now()};
+      if(gc?.trainerHistory)obj.trainerHistory=gc.trainerHistory; // 날짜기점 담당변경 이력 보존
       if(gc?.id)obj.id=gc.id;
       await svGrpClass(obj);close();
       if(onSaved)onSaved(obj);else renderPcContent();
@@ -7349,26 +7359,38 @@ function openGrpSessionModal(gc,date,sess){
   const isCancelled=sess&&sess.status==='cancelled';
   pcModal((box,close)=>{
     box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:gc.name+' · '+date+' ('+DAY_KO[dObj.getDay()]+')'}));
-    const _curSess0=grpSessMap[gc.id+'_'+date];
-    const effTrainerId=(_curSess0&&_curSess0.trainerId)||gc.trainerId;
-    const trName=(trainers.find(t=>t.id===effTrainerId)||{name:'-'}).name;
-    const subEl=box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub',textContent:'담당: '+trName+((_curSess0&&_curSess0.trainerId&&_curSess0.trainerId!==gc.trainerId)?' (대타)':'')+' · 정원: '+cap+'명 · '+gc.time+(gc.duration?' ('+gc.duration+'분)':'')}));
+    function _effName(){const s=grpSessMap[gc.id+'_'+date];const tid=effectiveGrpTrainerId(gc,date,s);const nm=(trainers.find(t=>t.id===tid)||{name:'-'}).name;const isSub=s&&s.trainerId&&s.trainerId!==gc.trainerId;const isHist=!isSub&&tid!==gc.trainerId;return nm+(isSub?' (대타)':isHist?' (담당변경)':'');}
+    const subEl=box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub'}));
+    function _refreshSub(){subEl.textContent='담당: '+_effName()+' · 정원: '+cap+'명 · '+gc.time+(gc.duration?' ('+gc.duration+'분)':'');}
+    _refreshSub();
     if(isCancelled){const cTag=box.appendChild(document.createElement('div'));cTag.style.cssText='background:#200d0d;border:1px solid #301515;border-radius:8px;padding:10px 14px;color:#f87171;font-size:13px;margin:8px 0;';cTag.textContent='⚠ 이 수업은 폐강되었습니다.'+(sess.cancelReason?' ('+sess.cancelReason+')':'');}
-    // 이 날짜만 담당 강사 변경(대타)
+    // 담당 강사 변경(이 날짜만 대타 / 이 날짜부터 담당 변경)
     if(!isCancelled){
-      const trRow=box.appendChild(document.createElement('div'));trRow.style.cssText='display:flex;align-items:center;gap:8px;margin:4px 0 10px;';
-      trRow.appendChild(Object.assign(document.createElement('span'),{textContent:'이 날짜 담당 강사'})).style.cssText='font-size:12px;color:#6b7494;white-space:nowrap;';
-      const trSel=trRow.appendChild(document.createElement('select'));trSel.className='pcm-select';trSel.style.cssText='flex:1;padding:6px 10px;font-size:12px;';
-      const _base=grpSessMap[gc.id+'_'+date];
-      const _sel=(_base&&_base.trainerId)||gc.trainerId||'';
-      [{v:'',l:'미지정'},...trainers.map(t=>({v:t.id,l:t.name+(t.id===gc.trainerId?' (고정담당)':'')}))].forEach(o=>{const op=document.createElement('option');op.value=o.v;op.textContent=o.l;if(o.v===_sel)op.selected=true;trSel.appendChild(op);});
-      trSel.onchange=async()=>{
+      const trWrap=box.appendChild(document.createElement('div'));trWrap.style.cssText='background:#111318;border:1px solid #1e2026;border-radius:8px;padding:10px 12px;margin:4px 0 10px;';
+      const trTop=trWrap.appendChild(document.createElement('div'));trTop.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+      trTop.appendChild(Object.assign(document.createElement('span'),{textContent:'담당 강사 변경'})).style.cssText='font-size:12px;color:#6b7494;white-space:nowrap;';
+      const trSel=trTop.appendChild(document.createElement('select'));trSel.className='pcm-select';trSel.style.cssText='flex:1;padding:6px 10px;font-size:12px;';
+      const _s0=grpSessMap[gc.id+'_'+date];const _sel=effectiveGrpTrainerId(gc,date,_s0)||'';
+      [{v:'',l:'미지정'},...trainers.map(t=>({v:t.id,l:t.name+(t.id===gc.trainerId?' (기본담당)':'')}))].forEach(o=>{const op=document.createElement('option');op.value=o.v;op.textContent=o.l;if(o.v===_sel)op.selected=true;trSel.appendChild(op);});
+      const btnRow=trWrap.appendChild(document.createElement('div'));btnRow.style.cssText='display:flex;gap:6px;';
+      const oneBtn=btnRow.appendChild(Object.assign(document.createElement('button'),{textContent:'이 날짜만 대타'}));
+      oneBtn.style.cssText='flex:1;padding:7px;border-radius:7px;border:1px solid #2a3050;background:transparent;color:#818cf8;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;';
+      oneBtn.onclick=async()=>{
         const s=grpSessMap[gc.id+'_'+date]||{classId:gc.id,date,status:'active',reservations:[]};
-        s.trainerId=trSel.value||null;
-        await svGrpSess(s);
-        const nm=(trainers.find(t=>t.id===(s.trainerId||gc.trainerId))||{name:'-'}).name;
-        subEl.textContent='담당: '+nm+((s.trainerId&&s.trainerId!==gc.trainerId)?' (대타)':'')+' · 정원: '+cap+'명 · '+gc.time+(gc.duration?' ('+gc.duration+'분)':'');
-        renderPcContent();
+        s.trainerId=trSel.value||null;await svGrpSess(s);_refreshSub();renderPcContent();
+        alert('이 날짜('+date+')만 대타로 지정되었습니다.');
+      };
+      const fromBtn=btnRow.appendChild(Object.assign(document.createElement('button'),{textContent:'이 날짜부터 담당 변경'}));
+      fromBtn.style.cssText='flex:1;padding:7px;border-radius:7px;border:1px solid #818cf8;background:rgba(129,140,248,.1);color:#818cf8;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;';
+      fromBtn.onclick=async()=>{
+        const newTid=trSel.value||null;
+        if(!confirm(date+'부터 담당 강사를 '+(newTid?(trainers.find(t=>t.id===newTid)||{name:''}).name:'미지정')+'(으)로 영구 변경할까요?\n이 날짜 이전 수업은 기존 담당으로 유지됩니다.'))return;
+        gc.trainerHistory=(gc.trainerHistory||[]).filter(h=>h.from!==date);
+        gc.trainerHistory.push({from:date,trainerId:newTid});
+        // 이 날짜 하루짜리 대타가 있었다면 제거(담당변경이 우선 적용되도록)
+        const s=grpSessMap[gc.id+'_'+date];if(s&&s.trainerId){s.trainerId=null;await svGrpSess(s);}
+        await svGrpClass(gc);_refreshSub();renderPcContent();
+        alert(date+'부터 담당 강사가 변경되었습니다.');
       };
     }
     // 구독 회원 (이 수업에 등록된 회원)
@@ -7564,8 +7586,10 @@ function renderMobGroupClass(ct){
     const color=isCancelled?'#6b7494':pct>=1?'#f87171':pct>=0.5?'#fbbf24':'#3dc87a';
     const card=detailEl.appendChild(document.createElement('div'));
     card.style.cssText='margin:4px 12px;background:#1a1c22;border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-left:3px solid '+color+';';
+    const _effTm=effectiveGrpTrainerId(gc,grpSelDate,sess);
     const _subTm=(sess&&sess.trainerId&&sess.trainerId!==gc.trainerId);
-    const trName=(trainers.find(t=>t.id===((sess&&sess.trainerId)||gc.trainerId))||{name:'-'}).name+(_subTm?' (대타)':'');
+    const _tagTm=_subTm?' (대타)':(_effTm!==gc.trainerId?' (담당변경)':'');
+    const trName=(trainers.find(t=>t.id===_effTm)||{name:'-'}).name+_tagTm;
     card.innerHTML='<div><div style="font-size:14px;font-weight:700;color:'+(isCancelled?'#6b7494':'#e2e8f0')+';'+(isCancelled?'text-decoration:line-through;':'')+'">'+gc.name+'</div><div style="font-size:11px;color:#6b7494;margin-top:2px;">'+(gc.time||'')+(gc.duration?' · '+gc.duration+'분':'')+' · '+trName+'</div></div>'
       +(isCancelled?'<div style="font-size:12px;font-weight:700;color:#6b7494;">폐강</div>'
         :'<div style="text-align:right;"><div style="font-size:17px;font-weight:800;color:'+color+';">'+booked+'/'+cap+'</div><div style="font-size:10px;color:#6b7494;">예약/정원</div></div>');
