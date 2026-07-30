@@ -5092,6 +5092,7 @@ function openPcPayment(mbId,parentBox,parentClose){
       // 수업 시간
       const r3=box.appendChild(document.createElement('div'));r3.className='pcm-row2';
       const durF=r3.appendChild(_f('수업 시간 (분)',true));const durI=durF.appendChild(_inp('예) 60','number'));durI.min='1';durI.value='60';
+      const tpF=r3.appendChild(_f('강사 회당 페이 (원)'));const tpI=tpF.appendChild(_inp('예) 30000','number'));tpI.min='0';
       // 결제 수단
       const payF=box.appendChild(_f('결제 수단 (참고용)'));
       const payRow=payF.appendChild(document.createElement('div'));payRow.style.cssText='display:flex;gap:8px;';
@@ -5111,7 +5112,7 @@ function openPcPayment(mbId,parentBox,parentClose){
         const now=new Date();
         const todayStr2=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
         const plan={id:'pl'+Date.now(),productId:'__custom__',productName:name,productType:'pt',billingMode:'postpaid',
-          duration:dur,pricePerSession:price,totalPrice:0,sessions:0,status:'active',
+          duration:dur,pricePerSession:price,trainerPay:parseInt(tpI.value)||0,totalPrice:0,sessions:0,status:'active',
           paymentMethod:cPayMethod,startDate:todayStr2,addedAt:now.getTime()};
         mb.plans=mb.plans||[];mb.plans.push(plan);sv('jbog10_mb',members);
         close();closePayModal();
@@ -5359,8 +5360,13 @@ function renderPcSessions(ct,acts){
     const plan=s.planId&&mb?(mb.plans||[]).find(p=>p.id===s.planId):null;
     const isOC=s.type==='OT'||s.type==='상담';
     const memo=s.type==='상담'?'💬 '+(s.memo||'-'):s.type==='OT'?('OT'+(s.memo?' · '+s.memo:'')):plan?(plan.productName||plan.sessions+'회권'):(s.memo||'-');
-    const feeRaw=(!isOC&&plan&&plan.totalPrice&&plan.sessions)?Math.round(plan.totalPrice/1.1/plan.sessions/2/100)*100:null;
-    rows.push({kind:'pt',date:s.date,time:(s.time||'').slice(0,5),trainerId:s.trainerId,name:mb?mb.name:(s.memo&&s.type==='상담'?s.memo.split('\n')[0]:s.memo||'-'),type:s.type||'-',memo,used:isOC?'-':(plan?getPlanUsed(plan.id)+'회':'-'),rem:isOC?'-':(plan?getPlanRemain(plan)+'':'-'),pay:canSeePay(s.trainerId)?feeRaw:null});
+    // 개인레슨 강사료: 진행된(오늘까지) 수업만, plan.trainerPay ▸ 상품 trainerPay
+    let ptPay=null;
+    if((s.type||'').includes('수업')&&s.date<=todayStr){
+      if(plan&&plan.trainerPay!=null)ptPay=plan.trainerPay;
+      else{const prd=plan?products.find(pr=>pr.id===plan.productId):null;ptPay=(prd&&prd.trainerPay)||0;}
+    }
+    rows.push({kind:'pt',date:s.date,time:(s.time||'').slice(0,5),trainerId:s.trainerId,name:mb?mb.name:(s.memo&&s.type==='상담'?s.memo.split('\n')[0]:s.memo||'-'),type:s.type||'-',memo,used:isOC?'-':(plan?getPlanUsed(plan.id)+'회':'-'),rem:isOC?'-':(plan?getPlanRemain(plan)+'':'-'),pay:canSeePay(s.trainerId)?ptPay:null});
   });
   // 그룹수업 진행 세션(오늘까지, 폐강 제외) — 강사 페이 = 진행횟수 × 회당 페이
   groupClasses.forEach(gc=>{
@@ -5826,13 +5832,14 @@ function openPcEditProduct(prodId,onSaved){
     if(p.type==='pt'){
       const durS=durRow.appendChild(_inp('예) 60','number'));durS.min='1';durS.style.width='100%';
       durS.value=p.duration||60;
+      const payF=box.appendChild(_f('강사 회당 페이 (원)'));const payI=payF.appendChild(_inp('예) 30000 · 1회당 강사 지급액'));payI.type='number';payI.min='0';payI.style.width='100%';payI.value=p.trainerPay||'';
       const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='24px';
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
         const name=nameI.value.trim();const price=parseMoney(priceI.value);
         if(!name){alert('상품명을 입력해주세요.');return;}if(!price){alert('가격을 입력해주세요.');return;}
         if(!(parseInt(durS.value)>=1)){alert('수업 시간을 입력해주세요.');return;}
-        p.name=name;p.price=price;p.duration=parseInt(durS.value);
+        p.name=name;p.price=price;p.duration=parseInt(durS.value);p.trainerPay=parseInt(payI.value)||0;
         sv('jbog10_pr',products);close();
         if(onSaved)onSaved();else renderPcContent();
       };
@@ -5866,10 +5873,11 @@ function openPcCreateProduct(onCreated){
       btn.style.cssText='flex:1;min-width:80px;padding:12px;border-radius:9px;border:1.5px solid '+(isOn?'#818cf8':'#1e2026')+';background:'+(isOn?'rgba(129,140,248,.1)':'#0f1117')+';color:'+(isOn?'#818cf8':'#6b7494')+';font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;';
       btn.textContent=t.l;typeBtns.push({btn,v:t.v});
       btn.onclick=()=>{selType=t.v;typeBtns.forEach(({btn:b,v})=>{b.style.borderColor=selType===v?'#818cf8':'#1e2026';b.style.background=selType===v?'rgba(129,140,248,.1)':'#0f1117';b.style.color=selType===v?'#818cf8':'#6b7494';});
-        durRow.style.display=selType==='pt'?'block':'none';
+        durRow.style.display=selType==='pt'?'block':'none';payRow.style.display=selType==='pt'?'block':'none';
         grpRow.style.display=selType==='group'?'block':'none';grpSpmRow.style.display=selType==='group'?'block':'none';};
     });
     const durRow=box.appendChild(_f('수업 시간 (분)',true));const durS=durRow.appendChild(_inp('예) 60','number'));durS.min='1';durS.style.width='100%';durS.value='60';
+    const payRow=box.appendChild(_f('강사 회당 페이 (원)'));const payI=payRow.appendChild(_inp('예) 30000 · 1회당 강사 지급액'));payI.type='number';payI.min='0';payI.style.width='100%';
     // 그룹수업 전용 필드
     const grpRow=box.appendChild(_f('연결 그룹수업'));
     const grpWrap=grpRow.appendChild(document.createElement('div'));grpWrap.style.cssText='display:flex;gap:8px;';
@@ -5899,6 +5907,7 @@ function openPcCreateProduct(onCreated){
       if(selType==='pt'&&!(parseInt(durS.value)>=1)){alert('수업 시간을 입력해주세요.');return;}
       const prod={id:'pr'+Date.now(),name,price,type:selType,
         duration:selType==='pt'?parseInt(durS.value):undefined,
+        trainerPay:selType==='pt'?(parseInt(payI.value)||0):undefined,
         groupClassId:selType==='group'?grpS.value:undefined,
         sessionsPerMonth:selType==='group'?parseInt(grpSpmI.value):undefined,
         createdAt:Date.now()};
