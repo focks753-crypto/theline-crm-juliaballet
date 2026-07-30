@@ -4456,27 +4456,21 @@ function getNextWeek(){
   function fmt(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
   return{mon:fmt(mon),sun:fmt(sun)};
 }
+// 차주 미수업 예상: 활성 회원 중 다음주에 개인레슨 슬롯도 없고 그룹수업 구독도 없는 회원(그룹은 주간반복이라 구독=다음주 수업 있음으로 간주)
 function getNextWeekNoSesMembers(){
   const{mon,sun}=getNextWeek();
-  const weekMbIds=new Set(
-    slots.filter(s=>s.memberId&&s.date>=mon&&s.date<=sun&&s.type!=='OT'&&s.type!=='상담')
-         .map(s=>s.memberId)
-  );
-  return members.filter(m=>{
-    const st=pcMbStatus(m);
-    return (m.plans||[]).reduce((sum,p)=>sum+((p&&!p.refunded)?Math.max(0,getPlanRemain(p)):0),0)>0 && !weekMbIds.has(m.id);
-  });
+  const weekMbIds=new Set();
+  slots.filter(s=>s.date>=mon&&s.date<=sun&&(s.type||'').includes('수업')).forEach(s=>slotMemberIds(s).forEach(id=>weekMbIds.add(id)));
+  members.forEach(m=>{if((m.plans||[]).some(p=>p.productType==='group'&&p.status!=='cancelled'&&!p.refunded))weekMbIds.add(m.id);});
+  return members.filter(m=>{const st=pcMbStatus(m);return (st==='active'||st==='expiring') && !weekMbIds.has(m.id);});
 }
+// 주간 미수업: 활성 회원 중 이번주에 개인레슨 슬롯도 없고 그룹수업 출석도 안 한 회원 (후불제라 잔여세션 조건 못 씀 → 활성상태로 판정)
 function getWeekNoSesMembers(){
   const{mon,sun}=getThisWeek();
-  const weekMbIds=new Set(
-    slots.filter(s=>s.memberId&&s.date>=mon&&s.date<=sun&&s.type!=='OT'&&s.type!=='상담')
-         .map(s=>s.memberId)
-  );
-  return members.filter(m=>{
-    const st=pcMbStatus(m);
-    return (m.plans||[]).reduce((sum,p)=>sum+((p&&!p.refunded)?Math.max(0,getPlanRemain(p)):0),0)>0 && !weekMbIds.has(m.id);
-  });
+  const weekMbIds=new Set();
+  slots.filter(s=>s.date>=mon&&s.date<=sun&&(s.type||'').includes('수업')).forEach(s=>slotMemberIds(s).forEach(id=>weekMbIds.add(id)));
+  Object.keys(grpSessMap).forEach(k=>{const dt=k.slice(-10);if(dt>=mon&&dt<=sun){const sess=grpSessMap[k];if(sess&&sess.status!=='cancelled')(sess.reservations||[]).forEach(r=>weekMbIds.add(r.memberId));}});
+  return members.filter(m=>{const st=pcMbStatus(m);return (st==='active'||st==='expiring') && !weekMbIds.has(m.id);});
 }
 function pcSLbl(s){return{active:'활성',expiring:'만료임박',expired:'만료',none:'미등록'}[s]||'미등록';}
 function pcSCls(s){return{active:'pbs-on',expiring:'pbs-ex',expired:'pbs-off',none:'pbs-no'}[s]||'pbs-no';}
@@ -4494,8 +4488,13 @@ function renderPcHome(ct,acts){
   members.forEach(mb=>{(mb.plans||[]).forEach(p=>{const d=new Date(p.addedAt||0);if(d.getFullYear()===y&&d.getMonth()===m2){mRev+=p.totalPrice||0;mCnt++;}});});
   // 이번달 총매출 = 청구(결제완료+미결제, 그룹+개인) + 예정(미래 레슨) - 환불. 매출내역 총매출과 동일 기준(후불제라 plan.totalPrice로는 0이 나옴)
   // 매출내역과 값이 일치하도록 청구를 먼저 최신화
+  // 그룹 세션(출석/폐강) 로드 — 이번달~다음주. 읽기 전용. ⚠️ 로드 전(grpSessMap 빈 상태)에 ensureGrpBillings 돌리면 출석0으로 그룹청구를 덮어써버리므로, 로드 완료 후에만 재집계
+  const _grpFrom=thisMonthKey+'-01', _grpTo=getNextWeek().sun;
+  const _homeGrpKey='home_'+_grpFrom+'_'+_grpTo;
+  if(typeof db!=='undefined'&&db&&window.__homeGrpKey!==_homeGrpKey){window.__homeGrpKey=_homeGrpKey;loadGrpSessRange([_grpFrom,_grpTo]).then(()=>{window.__homeGrpDone=_homeGrpKey;renderPcContent();});}
+  const _grpLoaded=(typeof db==='undefined'||!db)?true:(window.__homeGrpDone===_homeGrpKey);
   if(typeof ensurePtRecurringSlots==='function')ensurePtRecurringSlots();
-  if(typeof ensureGrpBillings==='function')ensureGrpBillings();
+  if(_grpLoaded&&typeof ensureGrpBillings==='function')ensureGrpBillings();
   if(typeof ensurePtBillings==='function')ensurePtBillings();
   const _cm=y+'-'+String(m2+1).padStart(2,'0');
   const _todayS=_grpFmtD(new Date());
