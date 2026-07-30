@@ -1190,6 +1190,8 @@ function getMemberWarn(mb){return(mb.plans||[]).some(p=>getPlanRemain(p)>0&&getP
 function isAdminUser(){if(!curUser)return false;const tr=trainers.find(t=>t.id===curUser);return tr&&tr.role==='관리자';}
 function canEditSlot(s){return isAdminUser()||(curUser&&curUser===s.trainerId);}
 function canAccessTrainer(tid){return isAdminUser()||(curUser&&curUser===tid);}
+// 일정(레슨/그룹) 표시 범위: 관리자 또는 미로그인 → 전체, 로그인한 강사 → 자기 것만
+function pcSeeAllSchedule(){return isAdminUser()||!curUser;}
 
 // ── GATE (센터 코드) ──
 let pinBuffer='';
@@ -5446,7 +5448,7 @@ function renderPcCal(ct,acts){
     const cell=grid.appendChild(Object.assign(document.createElement('div'),{className:'pc-cal-cell'+(isT?' tod':'')}));
     cell.appendChild(Object.assign(document.createElement('div'),{className:'pc-cal-num',textContent:''+d}));
     const ds=pcCalY+'-'+String(pcCalM+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-    slots.filter(s=>s.date===ds).sort((a,b)=>a.time.localeCompare(b.time)).slice(0,3).forEach(s=>{
+    slots.filter(s=>s.date===ds&&(pcSeeAllSchedule()||s.trainerId===curUser)).sort((a,b)=>a.time.localeCompare(b.time)).slice(0,3).forEach(s=>{
       const tr2=trainers.find(t=>t.id===s.trainerId);if(!tr2)return;
       const mb=s.memberId?members.find(m=>m.id===s.memberId):null;const col=getTrainerColor(tr2);
       const ev=cell.appendChild(Object.assign(document.createElement('div'),{className:'pc-cal-ev'}));ev.style.cssText='background:'+col.bg+';color:'+col.text+';';
@@ -5455,7 +5457,7 @@ function renderPcCal(ct,acts){
       ev.textContent=s.time.slice(0,5)+' '+(mb?mb.name:s.memo||tr2.name)+(usedC!==null?' '+usedC+'/'+sessC:'');
       ev.onclick=e=>{e.stopPropagation();openPcSlotDetail(s.id);};
     });
-    const all=slots.filter(s=>s.date===ds).length;if(all>3){const m=cell.appendChild(Object.assign(document.createElement('div'),{}));m.style.cssText='font-size:9px;color:#6496ff;margin-top:1px;cursor:pointer;font-weight:600;';m.textContent='+'+(all-3)+'개 더';m.onclick=e=>{e.stopPropagation();openPcDayView(ds);};}
+    const all=slots.filter(s=>s.date===ds&&(pcSeeAllSchedule()||s.trainerId===curUser)).length;if(all>3){const m=cell.appendChild(Object.assign(document.createElement('div'),{}));m.style.cssText='font-size:9px;color:#6496ff;margin-top:1px;cursor:pointer;font-weight:600;';m.textContent='+'+(all-3)+'개 더';m.onclick=e=>{e.stopPropagation();openPcDayView(ds);};}
     cell.onclick=()=>openPcDayView(ds);
   }
 }
@@ -6769,6 +6771,11 @@ async function svGrpClass(gc){
   }catch(e){alert('저장 실패');}
   return gc.id;
 }
+async function delGrpClass(id){
+  groupClasses=groupClasses.filter(g=>g.id!==id);
+  sv('jbog10_gcl',groupClasses);
+  try{if(db)await db.collection('jbog10_gc').doc(id).delete();}catch(e){}
+}
 async function svGrpSess(s){
   try{
     if(db){if(s.id)await db.collection('jbog10_gs').doc(s.id).set(s);else{const r=await db.collection('jbog10_gs').add(s);s.id=r.id;}}
@@ -7080,7 +7087,7 @@ function _renderGrpMonth(ct){
     const d=new Date(y,m,day);const dateStr=_grpFmtD(d);const isToday=dateStr===todayStr;const dow=d.getDay();
     const cell=grid.appendChild(document.createElement('div'));cell.className='grp-month-cell'+(isToday?' is-today':'');
     const dn=cell.appendChild(document.createElement('div'));dn.className='grp-month-date-n'+(isToday?' today':'');dn.textContent=day;
-    const dayClasses=groupClasses.filter(gc=>gc.active!==false&&(gc.days||[]).includes(dow)).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+    const dayClasses=groupClasses.filter(gc=>gc.active!==false&&(gc.days||[]).includes(dow)&&(pcSeeAllSchedule()||effectiveGrpTrainerId(gc,dateStr,grpSessMap[gc.id+'_'+dateStr])===curUser)).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
     const MAX_SHOW=3;
     dayClasses.slice(0,MAX_SHOW).forEach(gc=>{
       const sess=grpSessMap[gc.id+'_'+dateStr];
@@ -7114,7 +7121,7 @@ function _renderGrpMonth(ct){
 function openGrpDayView(dateStr){
   const DAY_KO=['일','월','화','수','목','금','토'];
   const dObj=new Date(dateStr+'T00:00:00');const dow=dObj.getDay();
-  const dayClasses=groupClasses.filter(gc=>gc.active!==false&&(gc.days||[]).includes(dow)).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  const dayClasses=groupClasses.filter(gc=>gc.active!==false&&(gc.days||[]).includes(dow)&&(pcSeeAllSchedule()||effectiveGrpTrainerId(gc,dateStr,grpSessMap[gc.id+'_'+dateStr])===curUser)).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
   pcModal((box,close)=>{
     box.style.cssText+=';width:560px;max-height:88vh;overflow-y:auto;';
     const hdr=box.appendChild(document.createElement('div'));
@@ -7318,6 +7325,18 @@ function openGrpClassModal(gc,onSaved){
     });
     const err=box.appendChild(document.createElement('div'));err.style.cssText='color:#f87171;font-size:12px;min-height:18px;margin-top:4px;';
     const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='20px';
+    if(gc?.id){
+      const delB=btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'수업 삭제'}));
+      delB.style.cssText='margin-right:auto;color:#f87171;border-color:rgba(248,113,113,.5);';
+      delB.onclick=async()=>{
+        const subCount=members.filter(mb=>(mb.plans||[]).some(p=>p.productType==='group'&&p.groupClassId===gc.id&&p.status!=='cancelled')).length;
+        let msg='"'+gc.name+'" 수업을 완전히 삭제할까요?\n달력·수업설정에서 사라집니다. (되돌릴 수 없음)';
+        if(subCount>0)msg='⚠️ 이 수업에 등록된 회원이 '+subCount+'명 있습니다.\n삭제하면 달력에서 사라지지만 기존 청구/매출 내역은 그대로 남습니다.\n회원 구독만 잠시 멈추려면 삭제 대신 "비활성"을 쓰세요.\n\n그래도 "'+gc.name+'" 수업을 삭제할까요?';
+        if(!confirm(msg))return;
+        await delGrpClass(gc.id);close();
+        if(onSaved)onSaved(null);else renderPcContent();
+      };
+    }
     btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
     btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:gc?'저장':'추가'})).onclick=async()=>{
       const name=nI.value.trim();if(!name){err.textContent='수업명을 입력해주세요.';return;}
@@ -8056,7 +8075,7 @@ window.addEventListener('resize',()=>{
 // ── PC 캘린더 슬롯 상세/수정/삭제 ─────────────────────────────────────────
 // ── PC 당일 전체 일정 보기 ────────────────────────────────────────────────
 function openPcDayView(ds){
-  const daySlots=slots.filter(s=>s.date===ds).sort((a,b)=>a.time.localeCompare(b.time));
+  const daySlots=slots.filter(s=>s.date===ds&&(pcSeeAllSchedule()||s.trainerId===curUser)).sort((a,b)=>a.time.localeCompare(b.time));
   const dows=['일','월','화','수','목','금','토'];
   const dateObj=new Date(ds+'T00:00:00');
   const title=ds+' ('+dows[dateObj.getDay()]+') · '+daySlots.length+'개 일정';
@@ -8076,7 +8095,7 @@ function openPcDayView(ds){
 
     function renderList(){
       listWrap.innerHTML='';
-      const today=slots.filter(s=>s.date===ds).sort((a,b)=>a.time.localeCompare(b.time));
+      const today=slots.filter(s=>s.date===ds&&(pcSeeAllSchedule()||s.trainerId===curUser)).sort((a,b)=>a.time.localeCompare(b.time));
       if(!today.length){
         const empty=listWrap.appendChild(document.createElement('div'));
         empty.style.cssText='text-align:center;padding:32px;color:#3a3f58;font-size:14px;';
