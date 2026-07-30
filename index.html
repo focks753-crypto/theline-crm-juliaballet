@@ -4335,7 +4335,7 @@ const PC_NAV=[
   {id:'customers',label:'고객관리',icon:'',subs:[{id:'members',label:'고객 관리'},{id:'consult',label:'상담 관리'},{id:'consult_hist',label:'상담 내역'},{id:'noweek',label:'주간미수업'},{id:'nextweek',label:'차주미수업'}]},
   {id:'sales',label:'매출관리',icon:'',subs:[{id:'all',label:'매출내역'},{id:'bypkg',label:'상품별내역'},{id:'bypay',label:'결제수단별'},{id:'sessions',label:'세션로그'},{id:'ptbilling',label:'청구관리'},{id:'refund',label:'환불내역'}]},
   {id:'groupclass',label:'그룹수업',icon:'',subs:[{id:'month',label:'월간 현황'},{id:'config',label:'수업 설정'},{id:'members',label:'회원 현황'}]},
-  {id:'settings',label:'센터설정',icon:'',subs:[{id:'staff',label:'직원관리'},{id:'pkg',label:'상품관리'},{id:'avail',label:'예약설정'}]},
+  {id:'settings',label:'센터설정',icon:'',subs:[{id:'staff',label:'직원관리',adminOnly:true},{id:'pkg',label:'상품관리'},{id:'avail',label:'예약설정'}]},
   {id:'calendar',label:'레슨일정',icon:''},
   {id:'bookings',label:'예약관리',icon:''},
   {id:'analytics',label:'분석',icon:'',adminOnly:true},
@@ -4357,7 +4357,7 @@ function initPcNav(){
           initPcNav();return;
         }
         nav._col=new Set();
-        pcV=item.id;pcSV=item.subs?item.subs[0].id:'';
+        pcV=item.id;pcSV=item.subs?(item.subs.find(s=>!s.adminOnly||isAdminUser())||item.subs[0]).id:'';
         if(item.id==='customers'&&pcSV==='members')custSV='all';
         initPcNav();renderPcContent();
       };
@@ -4365,6 +4365,7 @@ function initPcNav(){
         const sub=nav.appendChild(_mk('div','pc-nav-sub'));
         sub.dataset.id=item.id;
         item.subs.forEach(s=>{
+          if(s.adminOnly&&!isAdminUser())return;
           const si=sub.appendChild(_mk('div','pc-nav-sub-item',s.label));
           si.dataset.id=s.id;
           si.onclick=e=>{e.stopPropagation();nav._col=nav._col||new Set();nav._col.delete(item.id);pcSV=s.id;if(s.id==='members')custSV='all';initPcNav();renderPcContent();};
@@ -5759,10 +5760,13 @@ function renderPcBookings(ct,acts){
 
 // ── 센터설정 ─────────────────────────────────────────────────────────────
 function renderPcSettings(ct,acts){
-  if(!pcSV)pcSV='staff';
+  const _adm=isAdminUser();
+  // 직원관리(강사료 포함)는 관리자만 — 강사끼리 서로 페이 못 봄
+  if(!pcSV)pcSV=_adm?'staff':'pkg';
+  if(pcSV==='staff'&&!_adm)pcSV='pkg';
   const stbar2=document.getElementById('pc-subtabbar');
   if(stbar2){stbar2.innerHTML='';stbar2.style.display='flex';stbar2.style.padding='0 24px';
-    [{id:'staff',label:'직원관리'},{id:'pkg',label:'상품관리'},{id:'avail',label:'예약설정'}].forEach(s=>{const tab=stbar2.appendChild(Object.assign(document.createElement('div'),{className:'pc-stab'+(pcSV===s.id?' on':''),textContent:s.label}));tab.onclick=()=>{pcSV=s.id;initPcNav();renderPcContent();};});
+    [{id:'staff',label:'직원관리',adminOnly:true},{id:'pkg',label:'상품관리'},{id:'avail',label:'예약설정'}].filter(s=>!s.adminOnly||_adm).forEach(s=>{const tab=stbar2.appendChild(Object.assign(document.createElement('div'),{className:'pc-stab'+(pcSV===s.id?' on':''),textContent:s.label}));tab.onclick=()=>{pcSV=s.id;initPcNav();renderPcContent();};});
   }
   if(pcSV==='avail'){
     renderAdmAvail(ct);
@@ -7963,11 +7967,12 @@ function dlSessionsXLSX(){
   const wsData=[['TheLine CRM - 세션로그 (이용권별)'],['기간: '+pcSalStart+' ~ '+pcSalEnd],[]];
   wsData.push(['계약일','회원명','세션','계약료','부가세 전 계약료','세션단가','누적진행(당월제외)','이달수업','잔여수업']);
   const sd=new Date(pcSalStart),ed=new Date(pcSalEnd);ed.setHours(23,59,59);
+  const _effTr=(!isAdminUser()&&curUser)?curUser:pcSalTr; // 강사는 본인 세션만(엑셀도 서로 못 봄)
   const typeMap2={OT:['OT'],consult:['상담'],etc:['기타']};
   const periodSl=slots.filter(s=>{
     const d=new Date(s.date);
     if(!(d>=sd&&d<=ed))return false;
-    if(pcSalTr&&s.trainerId!==pcSalTr)return false;
+    if(_effTr&&s.trainerId!==_effTr)return false;
     if(pcSesType==='PT')return (s.type||'').includes('수업');
     if(pcSesType){const allowed=typeMap2[pcSesType];return allowed&&allowed.some(t=>s.type===t||(!s.type&&pcSesType==='etc'));}
     return s.type!=='OT'&&s.type!=='상담';
