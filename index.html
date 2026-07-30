@@ -5524,9 +5524,23 @@ function renderPcSales(ct,acts){
   const legacyPaid=[];members.forEach(mb=>{if(pcSalTr&&mb.trainerId!==pcSalTr)return;(mb.plans||[]).forEach(p=>{if((p.totalPrice||0)<=0||p.refunded||p.grpBillId||p.ptBillId)return;const pd=new Date(p.addedAt||0);if(pd<sd||pd>ed)return;legacyPaid.push({mb,p});});});
   const paidTotal=paidBillItems.reduce((s,x)=>s+(x.b.amount||0),0)+legacyPaid.reduce((s,x)=>s+(x.p.totalPrice||0),0);
   const unpaidTotal=unpaidBills.reduce((s,x)=>s+(x.b.amount||0),0);
-  const grossTotal=paidTotal+unpaidTotal;
-  const sg=ct.appendChild(Object.assign(document.createElement('div'),{className:'pc-dash-g3'}));
-  [{v:grossTotal.toLocaleString()+'원',l:'총 매출',c:'#3dc87a'},{v:unpaidTotal.toLocaleString()+'원',l:'미결제 청구',c:unpaidTotal>0?'#f6ad55':'#e2e8f0'},{v:refundTotal>0?('-'+refundTotal.toLocaleString()+'원'):'0원',l:'환불 합계',c:refundTotal>0?'#f87171':'#e2e8f0'}].forEach(c=>{
+  // 예정(미래) 개인레슨 — 레슨일정에 등록됐지만 아직 수업 안 한(오늘 이후) 레슨. 총매출에 합산.
+  const _todayStr=_grpFmtD(new Date());
+  const upcomingRows=[];
+  members.forEach(mb=>{
+    if(pcSalTr&&mb.trainerId!==pcSalTr)return;
+    (mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&!p.refunded&&p.status!=='cancelled').forEach(plan=>{
+      const pps=plan.pricePerSession||0;
+      const future=slots.filter(s=>s.planId===plan.id&&s.memberId===mb.id&&s.date>_todayStr).filter(s=>{const d=new Date(s.date+'T00:00:00');return d>=sd&&d<=ed;});
+      if(!future.length)return;
+      const byMonth={};future.forEach(s=>{const m=s.date.slice(0,7);(byMonth[m]=byMonth[m]||[]).push(s.date);});
+      Object.keys(byMonth).sort().forEach(m=>{const dates=byMonth[m].sort();upcomingRows.push({mb,plan,month:m,sessions:dates.length,amount:dates.length*pps,repDate:new Date(dates[0]+'T00:00:00')});});
+    });
+  });
+  const upcomingTotal=upcomingRows.reduce((s,x)=>s+x.amount,0);
+  const grossTotal=paidTotal+unpaidTotal+upcomingTotal;
+  const sg=ct.appendChild(Object.assign(document.createElement('div'),{className:'pc-dash-g4'}));
+  [{v:grossTotal.toLocaleString()+'원',l:'총 매출',c:'#3dc87a'},{v:unpaidTotal.toLocaleString()+'원',l:'미결제 청구',c:unpaidTotal>0?'#f6ad55':'#e2e8f0'},{v:upcomingTotal>0?upcomingTotal.toLocaleString()+'원':'0원',l:'예정 (미래 레슨)',c:upcomingTotal>0?'#818cf8':'#e2e8f0'},{v:refundTotal>0?('-'+refundTotal.toLocaleString()+'원'):'0원',l:'환불 합계',c:refundTotal>0?'#f87171':'#e2e8f0'}].forEach(c=>{
     const card=sg.appendChild(Object.assign(document.createElement('div'),{className:'pc-card'}));
     card.innerHTML='<div class="pc-card-ttl">'+c.l+'</div><div class="pc-card-val" style="color:'+(c.c||'#e2e8f0')+'">'+c.v+'</div>';
   });
@@ -5565,6 +5579,8 @@ function renderPcSales(ct,acts){
         unpaidBills.forEach(({kind,b,name})=>{const mb=members.find(m=>m.id===b.memberId);const tr3=mb?trainers.find(t=>t.id===mb.trainerId):null;const dObj=_billDateObj(b);r2.push({date:_dstr(dObj),tm:'-',tr:tr3?tr3.name:'-',mbName:b.memberName||(mb?mb.name:'-'),phone:(mb&&mb.phone)||'-',inflow:(mb&&mb.inflow)||'-',pay:'-',plan:(kind==='group'?'[그룹] ':'[개인] ')+name+' '+(b.month||'')+' ('+(b.sessions||0)+'회)',status:'미결제',amount:b.amount||0,isRefund:false,isUnpaid:true,billId:b.id,billKind:kind,memberId:b.memberId,addedAt:dObj.getTime()});});
         // 4) 환불
         refunds.forEach(rf=>{if(!rf.processedAt)return;const rd=new Date(rf.processedAt);if(rd<sd||rd>ed)return;if(pcSalTr){const mb=members.find(m=>m.name===rf.memberName);if(mb&&mb.trainerId!==pcSalTr)return;}r2.push({date:_dstr(rd),tm:String(rd.getHours()).padStart(2,'0')+':'+String(rd.getMinutes()).padStart(2,'0'),tr:'-',mbName:rf.memberName,phone:rf.phone||'-',inflow:'-',pay:'-',plan:(rf.type==='transfer'?'[양도]':'[환불]')+' '+rf.planName,status:'환불',amount:-(rf.refundAmount||0),isRefund:true,isUnpaid:false,addedAt:rf.processedAt});});
+        // 5) 예정(미래 개인레슨) — 아직 수업 안 한 등록 레슨
+        upcomingRows.forEach(({mb,plan,month,sessions,amount,repDate})=>{const tr3=trainers.find(t=>t.id===mb.trainerId);r2.push({date:_dstr(repDate),tm:'-',tr:tr3?tr3.name:'-',mbName:mb.name,phone:mb.phone||'-',inflow:mb.inflow||'-',pay:'-',plan:'[개인] '+(plan.productName||'개인레슨')+' '+month+' ('+sessions+'회 예정)',status:'예정',amount:amount,isRefund:false,isUnpaid:false,isUpcoming:true,addedAt:repDate.getTime()});});
         if(pcSalSortCol){
           r2.sort((a,b)=>{
             let va=a[pcSalSortCol],vb=b[pcSalSortCol];
@@ -5579,16 +5595,18 @@ function renderPcSales(ct,acts){
         const row=tbody.appendChild(document.createElement('tr'));
         if(r.isRefund)row.style.cssText='background:rgba(248,113,113,.06);';
         else if(r.isUnpaid)row.style.cssText='background:rgba(246,173,85,.05);';
+        else if(r.isUpcoming)row.style.cssText='background:rgba(129,140,248,.05);';
         [i+1,r.date,r.tm,r.tr,r.mbName,r.phone,r.inflow,r.pay,r.plan,r.status,r.amount].forEach((v,ci)=>{
           const td=document.createElement('td');
-          if(ci===9){td.textContent=v;td.style.fontWeight='700';td.style.color=r.status==='결제완료'?'#3dc87a':(r.status==='미결제'?'#f6ad55':'#f87171');}
-          else if(ci===10){td.textContent=(v<0?'-':'')+Math.abs(v).toLocaleString()+'원';td.style.fontWeight='700';if(r.isRefund)td.style.color='#f87171';else if(r.isUnpaid)td.style.color='#f6ad55';}
+          if(ci===9){td.textContent=v;td.style.fontWeight='700';td.style.color=r.status==='결제완료'?'#3dc87a':(r.status==='미결제'?'#f6ad55':(r.status==='예정'?'#818cf8':'#f87171'));}
+          else if(ci===10){td.textContent=(v<0?'-':'')+Math.abs(v).toLocaleString()+'원';td.style.fontWeight='700';if(r.isRefund)td.style.color='#f87171';else if(r.isUnpaid)td.style.color='#f6ad55';else if(r.isUpcoming)td.style.color='#818cf8';}
           else td.textContent=v;
           row.appendChild(td);
         });
-        // 관리자 전용 삭제 버튼 (모든 행)
+        // 관리자 전용 삭제 버튼 (예정 행은 청구가 아니므로 제외 — 레슨일정에서 레슨을 지우면 사라짐)
         if(isAdminUser()){
           const actTd=row.appendChild(document.createElement('td'));
+          if(r.isUpcoming){return;}
           const delBtn=actTd.appendChild(document.createElement('button'));
           delBtn.style.cssText='padding:5px 10px;font-size:11px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:transparent;color:#f87171;cursor:pointer;white-space:nowrap;';
           delBtn.textContent='삭제';
