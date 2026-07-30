@@ -5377,10 +5377,17 @@ function renderPcSessions(ct,acts){
       const ds=fmtD(dd);if(ds>todayStr)continue;
       const sess=grpSessMap[gc.id+'_'+ds];
       if(sess&&sess.status==='cancelled')continue;
-      const tid=effectiveGrpTrainerId(gc,ds,sess);
-      if(effTr&&tid!==effTr)continue;
       const attended=((sess&&sess.reservations)||[]).length;
-      rows.push({kind:'group',date:ds,time:(gc.time||'').slice(0,5),trainerId:tid,name:'-',type:'그룹수업',memo:gc.name,used:attended+'명',rem:'-',pay:canSeePay(tid)?((gc.trainerPay||0)||null):null});
+      const t2=(gc.time||'').slice(0,5);
+      // 메인 강사 (이 날짜 페이 오버라이드 있으면 우선)
+      const mainTid=effectiveGrpTrainerId(gc,ds,sess);
+      const mainPay=(sess&&sess.mainPay!=null)?sess.mainPay:(gc.trainerPay||0);
+      if(!effTr||mainTid===effTr)rows.push({kind:'group',date:ds,time:t2,trainerId:mainTid,name:'-',type:'그룹수업',memo:gc.name,used:attended+'명',rem:'-',pay:canSeePay(mainTid)?(mainPay||null):null});
+      // 보조 강사 (이 날짜만)
+      if(sess&&sess.assistantTrainerId){
+        const aTid=sess.assistantTrainerId;const aPay=(sess.assistantPay!=null)?sess.assistantPay:0;
+        if(!effTr||aTid===effTr)rows.push({kind:'group',date:ds,time:t2,trainerId:aTid,name:'(보조)',type:'그룹수업',memo:gc.name+' · 보조',used:attended+'명',rem:'-',pay:canSeePay(aTid)?(aPay||null):null});
+      }
     }
   });
   // 유형 필터
@@ -7471,6 +7478,34 @@ function openGrpSessionModal(gc,date,sess){
         await svGrpClass(gc);_refreshSub();renderPcContent();
         alert(date+'부터 담당 강사가 변경되었습니다.');
       };
+    }
+    // 강사료 · 보조강사 (이 날짜만) — 관리자 전용
+    if(!isCancelled&&isAdminUser()){
+      const s0=grpSessMap[gc.id+'_'+date]||{};
+      const effTid=effectiveGrpTrainerId(gc,date,s0);
+      const effNm=(trainers.find(t=>t.id===effTid)||{name:'미지정'}).name;
+      const pw=box.appendChild(document.createElement('div'));pw.style.cssText='background:#111318;border:1px solid #1e2026;border-radius:8px;padding:10px 12px;margin:4px 0 10px;';
+      pw.appendChild(Object.assign(document.createElement('div'),{textContent:'강사료 · 보조강사 (이 날짜만)'})).style.cssText='font-size:12px;color:#818cf8;font-weight:700;margin-bottom:8px;';
+      // 메인 강사 페이
+      const mRow=pw.appendChild(document.createElement('div'));mRow.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+      mRow.appendChild(Object.assign(document.createElement('span'),{textContent:'메인 · '+effNm})).style.cssText='font-size:12px;color:#c4cde8;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      const mPayI=mRow.appendChild(document.createElement('input'));mPayI.type='number';mPayI.min='0';mPayI.placeholder='기본 '+((gc.trainerPay||0).toLocaleString())+'원';mPayI.className='pcm-input';mPayI.style.cssText='width:130px;padding:6px 9px;font-size:12px;';mPayI.value=(s0.mainPay!=null)?s0.mainPay:'';
+      // 보조 강사 + 페이
+      const aRow=pw.appendChild(document.createElement('div'));aRow.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+      const aSel=aRow.appendChild(document.createElement('select'));aSel.className='pcm-select';aSel.style.cssText='flex:1;padding:6px 9px;font-size:12px;';
+      [{v:'',l:'보조강사 없음'},...trainers.filter(t=>t.id!==effTid).map(t=>({v:t.id,l:t.name}))].forEach(o=>{const op=document.createElement('option');op.value=o.v;op.textContent=o.l;if(o.v===(s0.assistantTrainerId||''))op.selected=true;aSel.appendChild(op);});
+      const aPayI=aRow.appendChild(document.createElement('input'));aPayI.type='number';aPayI.min='0';aPayI.placeholder='보조 페이';aPayI.className='pcm-input';aPayI.style.cssText='width:130px;padding:6px 9px;font-size:12px;';aPayI.value=(s0.assistantPay!=null)?s0.assistantPay:'';
+      const saveP=pw.appendChild(Object.assign(document.createElement('button'),{textContent:'이 날짜 강사료 저장'}));
+      saveP.style.cssText='width:100%;padding:7px;border-radius:7px;border:1px solid #818cf8;background:rgba(129,140,248,.1);color:#818cf8;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;';
+      saveP.onclick=async()=>{
+        const s=grpSessMap[gc.id+'_'+date]||{classId:gc.id,date,status:'active',reservations:[]};
+        s.mainPay=mPayI.value===''?null:(parseInt(mPayI.value)||0);
+        s.assistantTrainerId=aSel.value||null;
+        s.assistantPay=aPayI.value===''?null:(parseInt(aPayI.value)||0);
+        await svGrpSess(s);renderPcContent();
+        alert(date+' 강사료가 저장되었습니다.');close();
+      };
+      pw.appendChild(Object.assign(document.createElement('div'),{textContent:'비워두면 메인은 수업 기본 페이 적용, 보조는 미지급. 이 날짜에만 특별 적용됩니다.'})).style.cssText='font-size:10px;color:#3a3f58;margin-top:6px;line-height:1.5;';
     }
     // 구독 회원 (이 수업에 등록된 회원)
     const month=date.slice(0,7);
