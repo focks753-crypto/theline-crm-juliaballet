@@ -6720,6 +6720,7 @@ function ensurePtRecurringSlots(){
       for(let d=new Date(cur);d<=horizon;d.setDate(d.getDate()+1)){
         if(!rec.days.includes(d.getDay()))continue;
         const ds=_grpFmtD(d);
+        if(rec.endDate&&ds>rec.endDate)break; // 종료일 이후 생성 중단
         if(skip.has(ds))continue;
         if(slots.some(s=>s.planId===plan.id&&s.date===ds))continue;
         slots.push({id:'s'+Date.now()+'_'+Math.random().toString(36).slice(2),trainerId:rec.trainerId||mb.trainerId||null,memberId:mb.id,planId:plan.id,date:ds,time:rec.time,type:'개인레슨 수업',memo:'고정수업',recurId:plan.id});
@@ -8363,6 +8364,48 @@ function openPcSlotDetail(slotId){
       };
     }
     editBtn.onclick=()=>{showEditForm();};
+
+    // 고정수업(반복) 관리 — 날짜 기점 담당강사 변경 + 종료일 설정
+    const recPlan=(mb&&s.recurId)?(mb.plans||[]).find(p=>p.id===s.recurId):null;
+    if(recPlan&&recPlan.recurring){
+      const rec=recPlan.recurring;
+      const rb=box.appendChild(document.createElement('div'));
+      rb.style.cssText='background:#0f1117;border:1px solid #1e2026;border-radius:10px;padding:14px 16px;margin-bottom:12px;';
+      rb.appendChild(Object.assign(document.createElement('div'),{textContent:'고정수업 관리'})).style.cssText='font-size:12px;font-weight:800;color:#818cf8;margin-bottom:12px;';
+      // 담당 강사 변경 (이 날짜부터)
+      const trRow=rb.appendChild(document.createElement('div'));trRow.style.cssText='margin-bottom:14px;';
+      trRow.appendChild(Object.assign(document.createElement('div'),{textContent:'담당 강사 변경 · '+s.date+'부터'})).style.cssText='font-size:11px;color:#6b7494;margin-bottom:5px;';
+      const trW=trRow.appendChild(document.createElement('div'));trW.style.cssText='display:flex;gap:6px;';
+      const trSel=trW.appendChild(_sel(trainers.map(t=>({v:t.id,l:t.name}))));if(s.trainerId)trSel.value=s.trainerId;trSel.style.flex='1';
+      const trBtn=trW.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'이 날짜부터 변경'}));trBtn.style.whiteSpace='nowrap';
+      trBtn.onclick=()=>{
+        const newTid=trSel.value;if(!newTid){alert('강사를 선택해주세요.');return;}
+        const nm=(trainers.find(t=>t.id===newTid)||{}).name;
+        if(!confirm(s.date+'부터 담당 강사를 '+nm+'(으)로 변경할까요?\n(그 이전 수업은 기존 강사 유지)'))return;
+        rec.trainerId=newTid;
+        slots.forEach(sl=>{if(sl.recurId===recPlan.id&&sl.date>=s.date)sl.trainerId=newTid;});
+        sv('jbog10_mb',members);sv('jbog10_sl',slots);
+        closeModal();renderPcContent();
+      };
+      // 종료일
+      const edRow=rb.appendChild(document.createElement('div'));
+      edRow.appendChild(Object.assign(document.createElement('div'),{textContent:'종료일 · 이 날짜까지만 수업'+(rec.endDate?' (현재: '+rec.endDate+')':'')})).style.cssText='font-size:11px;color:#6b7494;margin-bottom:5px;';
+      const edW=edRow.appendChild(document.createElement('div'));edW.style.cssText='display:flex;gap:6px;';
+      const edI=edW.appendChild(document.createElement('input'));edI.type='date';edI.value=rec.endDate||'';edI.className='pcm-input';edI.style.flex='1';
+      const edBtn=edW.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'설정'}));
+      edBtn.onclick=()=>{
+        const ed=edI.value;if(!ed){alert('종료일을 선택해주세요.');return;}
+        if(!confirm(ed+'까지만 수업하도록 설정할까요?\n이후 예정 수업은 삭제됩니다.'))return;
+        rec.endDate=ed;
+        slots=slots.filter(sl=>!(sl.recurId===recPlan.id&&sl.date>ed));
+        sv('jbog10_mb',members);sv('jbog10_sl',slots);ensurePtRecurringSlots();
+        closeModal();renderPcContent();
+      };
+      if(rec.endDate){
+        const clr=edW.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'해제'}));clr.style.whiteSpace='nowrap';
+        clr.onclick=()=>{delete rec.endDate;sv('jbog10_mb',members);ensurePtRecurringSlots();closeModal();renderPcContent();};
+      }
+    }
 
     // 삭제 버튼
     const delWrap=box.appendChild(document.createElement('div'));
