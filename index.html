@@ -5324,7 +5324,7 @@ function renderPcSessions(ct,acts){
   trainers.forEach(t=>{const o=trs.appendChild(document.createElement('option'));o.value=t.id;o.textContent=t.name;if(t.id===pcSalTr)o.selected=true;});
   trs.onchange=e=>pcSalTr=e.target.value;
   const typeSel=fb.appendChild(document.createElement('select'));typeSel.className='pcm-select';typeSel.style.cssText='width:110px;padding:9px 12px;';
-  [{v:'',l:'전체 유형'},{v:'pt',l:'수업'},{v:'OT',l:'OT'},{v:'상담',l:'상담'},{v:'기타',l:'기타'}].forEach(({v,l})=>{
+  [{v:'',l:'전체 유형'},{v:'pt',l:'개인레슨'},{v:'group',l:'그룹수업'},{v:'OT',l:'OT'},{v:'상담',l:'상담'},{v:'기타',l:'기타'}].forEach(({v,l})=>{
     const o=typeSel.appendChild(document.createElement('option'));o.value=v;o.textContent=l;if(v===pcSesType)o.selected=true;
   });
   typeSel.onchange=e=>pcSesType=e.target.value;
@@ -5339,29 +5339,62 @@ function renderPcSessions(ct,acts){
    {l:'이번달',fn:()=>{const t=new Date();setQuick(fmtD(new Date(t.getFullYear(),t.getMonth(),1)),fmtD(new Date(t.getFullYear(),t.getMonth()+1,0)));}}
   ].forEach(({l,fn,title},i)=>{const btn=qb.appendChild(document.createElement('button'));btn.className='pc-tbtn';btn.textContent=l;if(title)btn.title=title;btn.style.cssText='padding:8px '+(i<2?'12px':'16px')+';font-size:13px;font-weight:600;border-color:#818cf8;color:#818cf8;'+(i===1?'margin-right:8px;':'');btn.onclick=fn;});
 
-  // ── 데이터 필터링 (전체 유형 포함) ──
-  const allTypes=['25분 수업','50분 수업','OT','상담','기타'];
-  const isPT=s=>{const t=(s.type||'');return t.includes('수업');};
-  const filtered=slots.filter(s=>{
-    const d=new Date(s.date);if(d<sd||d>ed)return false;
-    if(pcSalTr&&s.trainerId!==pcSalTr)return false;
-    if(pcSesType){
-      if(pcSesType==='pt')return isPT(s);
-      return (s.type||'')===(pcSesType);
-    }
-    return true; // 전체 (수업 + OT + 상담 + 기타)
-  }).sort((a,b)=>b.date.localeCompare(a.date)||b.time.localeCompare(a.time));
+  // ── 데이터: 개인레슨 슬롯 + 그룹수업 진행분(강사 페이 정산) ──
+  const isAdm=isAdminUser();
+  // 강사는 본인 세션/페이만 (필터 잠금). pcSalTr 전역 오염 방지 위해 지역 변수 사용
+  const effTr=(!isAdm&&curUser)?curUser:pcSalTr;
+  if(!isAdm&&curUser){trs.value=curUser;trs.disabled=true;}
+  const canSeePay=(tid)=>isAdm||(!!curUser&&tid===curUser); // 다른 강사 페이 비공개
+  const todayStr=fmtD(new Date());
+  // 그룹수업 세션(폐강/출석) 선택 범위 로드 — 범위당 1회
+  const _rk='ses_'+pcSalStart+'_'+pcSalEnd;
+  if(db&&window.__sessGrpKey!==_rk){window.__sessGrpKey=_rk;loadGrpSessRange([pcSalStart,pcSalEnd]).then(()=>renderPcContent());}
 
-  // ── 요약 카드 (유형별 건수) ──
-  const ptCnt=filtered.filter(s=>isPT(s)).length;
-  const otCnt=filtered.filter(s=>(s.type||'')==='OT').length;
-  const conCnt=filtered.filter(s=>(s.type||'')==='상담').length;
-  const etcCnt=filtered.length-ptCnt-otCnt-conCnt;
-  const trSet=new Set(filtered.map(s=>s.trainerId));
+  let rows=[];
+  // 개인레슨/OT/상담 슬롯
+  slots.forEach(s=>{
+    const d=new Date(s.date);if(d<sd||d>ed)return;
+    if(effTr&&s.trainerId!==effTr)return;
+    const mb=s.memberId?members.find(m=>m.id===s.memberId):null;
+    const plan=s.planId&&mb?(mb.plans||[]).find(p=>p.id===s.planId):null;
+    const isOC=s.type==='OT'||s.type==='상담';
+    const memo=s.type==='상담'?'💬 '+(s.memo||'-'):s.type==='OT'?('OT'+(s.memo?' · '+s.memo:'')):plan?(plan.productName||plan.sessions+'회권'):(s.memo||'-');
+    const feeRaw=(!isOC&&plan&&plan.totalPrice&&plan.sessions)?Math.round(plan.totalPrice/1.1/plan.sessions/2/100)*100:null;
+    rows.push({kind:'pt',date:s.date,time:(s.time||'').slice(0,5),trainerId:s.trainerId,name:mb?mb.name:(s.memo&&s.type==='상담'?s.memo.split('\n')[0]:s.memo||'-'),type:s.type||'-',memo,used:isOC?'-':(plan?getPlanUsed(plan.id)+'회':'-'),rem:isOC?'-':(plan?getPlanRemain(plan)+'':'-'),pay:canSeePay(s.trainerId)?feeRaw:null});
+  });
+  // 그룹수업 진행 세션(오늘까지, 폐강 제외) — 강사 페이 = 진행횟수 × 회당 페이
+  groupClasses.forEach(gc=>{
+    if(gc.active===false)return;
+    for(let dd=new Date(sd);dd<=ed;dd.setDate(dd.getDate()+1)){
+      if(!(gc.days||[]).includes(dd.getDay()))continue;
+      const ds=fmtD(dd);if(ds>todayStr)continue;
+      const sess=grpSessMap[gc.id+'_'+ds];
+      if(sess&&sess.status==='cancelled')continue;
+      const tid=effectiveGrpTrainerId(gc,ds,sess);
+      if(effTr&&tid!==effTr)continue;
+      const attended=((sess&&sess.reservations)||[]).length;
+      rows.push({kind:'group',date:ds,time:(gc.time||'').slice(0,5),trainerId:tid,name:'-',type:'그룹수업',memo:gc.name,used:attended+'명',rem:'-',pay:canSeePay(tid)?((gc.trainerPay||0)||null):null});
+    }
+  });
+  // 유형 필터
+  if(pcSesType){
+    rows=rows.filter(r=>{
+      if(pcSesType==='pt')return r.kind==='pt'&&(r.type||'').includes('수업');
+      if(pcSesType==='group')return r.kind==='group';
+      if(pcSesType==='기타')return r.kind==='pt'&&r.type!=='OT'&&r.type!=='상담'&&!(r.type||'').includes('수업');
+      return r.kind==='pt'&&r.type===pcSesType;
+    });
+  }
+  rows.sort((a,b)=>b.date.localeCompare(a.date)||(b.time||'').localeCompare(a.time||''));
+
+  // ── 요약 카드 ──
+  const ptCnt=rows.filter(r=>r.kind==='pt'&&(r.type||'').includes('수업')).length;
+  const grpCnt=rows.filter(r=>r.kind==='group').length;
+  const payTotal=rows.reduce((a,r)=>a+(r.pay||0),0);
   const sg=ct.appendChild(Object.assign(document.createElement('div'),{className:'pc-dash-g4'}));
-  [{v:filtered.length+'건',l:'전체 세션'},{v:ptCnt+'건',l:'수업'},{v:otCnt+'건',l:'OT'},{v:conCnt+'건',l:'상담'}].forEach(c=>{
+  [{v:rows.length+'건',l:'전체 세션'},{v:ptCnt+'건',l:'개인레슨'},{v:grpCnt+'건',l:'그룹수업'},{v:payTotal.toLocaleString()+'원',l:'수업료 합계'+(isAdm?'':' · 내 페이'),c:'#fbbf24'}].forEach(c=>{
     const card=sg.appendChild(Object.assign(document.createElement('div'),{className:'pc-card pc-card-anim'}));
-    card.innerHTML='<div class="pc-card-ttl">'+c.l+'</div><div class="pc-card-val">'+c.v+'</div>';
+    card.innerHTML='<div class="pc-card-ttl">'+c.l+'</div><div class="pc-card-val"'+(c.c?' style="color:'+c.c+'"':'')+'>'+c.v+'</div>';
   });
 
   // ── 테이블 ──
@@ -5369,41 +5402,28 @@ function renderPcSessions(ct,acts){
   const tbl=tw.appendChild(Object.assign(document.createElement('table'),{className:'pc-tbl'}));
   const thead=tbl.appendChild(document.createElement('thead'));const hr=thead.appendChild(document.createElement('tr'));
   const tbody=tbl.appendChild(document.createElement('tbody'));
-  makeSortThs(hr,['날짜','시간','강사','이름','유형','수업권 / 메모','진행','잔여','수업료'],['date','time','tr','name','type','plan',null,'rem',null],pcSesSortCol,pcSesSortDir,(col,dir)=>{pcSesSortCol=col;pcSesSortDir=dir;renderPcContent();});
+  ['날짜','시간','강사','이름','유형','수업/메모','진행','잔여','수업료'].forEach(h=>{const th=hr.appendChild(document.createElement('th'));th.textContent=h;th.style.cssText='padding:8px 10px;text-align:left;color:#6b7494;font-size:11px;font-weight:700;border-bottom:1px solid #1e2026;white-space:nowrap;';});
 
-  filtered.forEach((s,idx)=>{
-    const tr2=trainers.find(t=>t.id===s.trainerId);
-    const mb=s.memberId?members.find(m=>m.id===s.memberId):null;
-    const plan=s.planId&&mb?(mb.plans||[]).find(p=>p.id===s.planId):null;
-    const rem=plan?getPlanRemain(plan):'-';
-    const nameVal=mb?mb.name:(s.memo&&s.type==='상담'?s.memo.split('\n')[0]:s.memo||'-');
-    const planMemo=s.type==='상담'?'💬 '+(s.memo||'-'):
-                   s.type==='OT'?'OT'+(s.memo?' · '+s.memo:''):
-                   plan?(plan.productName||plan.sessions+'회권'):(s.memo||'-');
-    const remVal=s.type==='상담'||s.type==='OT'?'-':rem+'';
-    const usedVal=s.type==='상담'||s.type==='OT'?'-':(plan?getPlanUsed(plan.id)+'회':'-');
-    const isOTorCon2=s.type==='OT'||s.type==='상담';
-    const feeRaw=(!isOTorCon2&&plan&&plan.totalPrice&&plan.sessions)?Math.round(plan.totalPrice/1.1/plan.sessions/2/100)*100:null;
-    const feeVal=feeRaw!==null?feeRaw.toLocaleString()+'원':'-';
-
+  rows.forEach(r=>{
+    const tr2=trainers.find(t=>t.id===r.trainerId);
+    const feeVal=(r.pay!=null&&r.pay>0)?r.pay.toLocaleString()+'원':'-';
     const row=tbody.appendChild(document.createElement('tr'));
-    // 유형별 색상 강조
-    if(s.type==='OT')row.style.cssText='background:rgba(251,191,36,.04);';
-    else if(s.type==='상담')row.style.cssText='background:rgba(129,140,248,.04);';
-
-    [s.date,s.time.slice(0,5),tr2?tr2.name:'-',nameVal,s.type||'-',planMemo,usedVal,remVal,feeVal].forEach((v,ci)=>{
-      const td=row.appendChild(document.createElement('td'));
-      td.textContent=v;
-      // 유형 컬럼 배지색
+    if(r.kind==='group')row.style.cssText='background:rgba(56,189,248,.04);';
+    else if(r.type==='OT')row.style.cssText='background:rgba(251,191,36,.04);';
+    else if(r.type==='상담')row.style.cssText='background:rgba(129,140,248,.04);';
+    [r.date,r.time,tr2?tr2.name:'-',r.name,r.type,r.memo,r.used,r.rem,feeVal].forEach((v,ci)=>{
+      const td=row.appendChild(document.createElement('td'));td.textContent=v;td.style.cssText='padding:9px 10px;font-size:12.5px;color:#c4cde8;border-bottom:1px solid #15171d;';
       if(ci===4){
-        if((s.type||'').includes('수업'))td.style.cssText='color:#3dc87a;font-weight:700;';
-        else if(s.type==='OT')td.style.cssText='color:#fbbf24;font-weight:700;';
-        else if(s.type==='상담')td.style.cssText='color:#818cf8;font-weight:700;';
+        if(r.type==='그룹수업')td.style.color='#38bdf8';
+        else if((r.type||'').includes('수업'))td.style.color='#3dc87a';
+        else if(r.type==='OT')td.style.color='#fbbf24';
+        else if(r.type==='상담')td.style.color='#818cf8';
+        td.style.fontWeight='700';
       }
-      if(ci===8&&feeRaw!==null)td.style.cssText='color:#fbbf24;font-weight:700;';
+      if(ci===8&&feeVal!=='-'){td.style.color='#fbbf24';td.style.fontWeight='700';}
     });
   });
-  if(!filtered.length){
+  if(!rows.length){
     const tr3=tbody.appendChild(document.createElement('tr'));
     const td=tr3.appendChild(document.createElement('td'));
     td.colSpan=9;td.style.cssText='text-align:center;padding:40px;color:#2a2d45;font-size:13px;';
@@ -5412,16 +5432,7 @@ function renderPcSessions(ct,acts){
     const tfoot=tbl.appendChild(document.createElement('tfoot'));
     const sumTr=tfoot.appendChild(document.createElement('tr'));
     sumTr.style.cssText='border-top:2px solid #2a3050;';
-    const feeTotal=filtered.reduce((acc,s)=>{
-      const mb2=s.memberId?members.find(m=>m.id===s.memberId):null;
-      const plan2=s.planId&&mb2?(mb2.plans||[]).find(p=>p.id===s.planId):null;
-      const isOC=s.type==='OT'||s.type==='상담';
-      if(!isOC&&plan2&&plan2.totalPrice&&plan2.sessions){
-        return acc+Math.round(plan2.totalPrice/1.1/plan2.sessions/2/100)*100;
-      }
-      return acc;
-    },0);
-    ['','','','','','','','합계',feeTotal.toLocaleString()+'원'].forEach((v,ci)=>{
+    ['','','','','','','','합계',payTotal.toLocaleString()+'원'].forEach((v,ci)=>{
       const td=sumTr.appendChild(document.createElement('td'));
       td.textContent=v;
       td.style.cssText='padding:10px 12px;font-size:13px;font-weight:800;'+(ci===7?'color:#8892aa;text-align:right;':'')+(ci===8?'color:#fbbf24;':'');
@@ -7308,6 +7319,7 @@ function openGrpClassModal(gc,onSaved){
     const trS=trF.appendChild(_sel([{v:'',l:'선택 안함'},...trainers.map(t=>({v:t.id,l:t.name}))]));if(gc?.trainerId)trS.value=gc.trainerId;
     const capF=box.appendChild(_f('정원 (명)',true));const capI=capF.appendChild(_inp('5'));capI.type='number';capI.min='1';capI.max='100';capI.value=gc?.capacity||5;
     const priceF=box.appendChild(_f('회당 금액 (원)',true));const priceI=priceF.appendChild(_inp('예) 20000'));priceI.type='number';priceI.min='0';priceI.style.width='100%';priceI.value=gc?.pricePerSession||'';
+    const payF=box.appendChild(_f('강사 회당 페이 (원)'));const payI=payF.appendChild(_inp('예) 15000 · 진행 1회당 강사 지급액'));payI.type='number';payI.min='0';payI.style.width='100%';payI.value=gc?.trainerPay||'';
     const timeF=box.appendChild(_f('시작 시간'));
     const timeW=timeF.appendChild(document.createElement('div'));timeW.style.cssText='display:flex;gap:8px;';
     const _initT=(gc?.time||'09:00').split(':');
@@ -7344,7 +7356,7 @@ function openGrpClassModal(gc,onSaved){
       const cap=parseInt(capI.value);if(isNaN(cap)||cap<1){err.textContent='정원을 입력해주세요.';return;}
       const days=dayBtns.filter(d=>d.btn._on).map(d=>d.idx);if(!days.length){err.textContent='요일을 선택해주세요.';return;}
       const pps=parseInt(priceI.value)||0;if(!pps){err.textContent='회당 금액을 입력해주세요.';return;}
-      const obj={name,trainerId:trS.value||null,capacity:cap,pricePerSession:pps,time:timeI.value,duration:parseInt(durI.value)||50,days,active:true,createdAt:gc?.createdAt||Date.now()};
+      const obj={name,trainerId:trS.value||null,capacity:cap,pricePerSession:pps,trainerPay:parseInt(payI.value)||0,time:timeI.value,duration:parseInt(durI.value)||50,days,active:true,createdAt:gc?.createdAt||Date.now()};
       if(gc?.trainerHistory)obj.trainerHistory=gc.trainerHistory; // 날짜기점 담당변경 이력 보존
       if(gc?.id)obj.id=gc.id;
       await svGrpClass(obj);close();
