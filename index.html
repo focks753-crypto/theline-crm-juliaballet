@@ -4492,6 +4492,21 @@ function renderPcHome(ct,acts){
   const thisMonthKey=y+'-'+String(m2+1).padStart(2,'0');
   let mRev=0,mCnt=0;
   members.forEach(mb=>{(mb.plans||[]).forEach(p=>{const d=new Date(p.addedAt||0);if(d.getFullYear()===y&&d.getMonth()===m2){mRev+=p.totalPrice||0;mCnt++;}});});
+  // 이번달 총매출 = 청구(결제완료+미결제, 그룹+개인) + 예정(미래 레슨) - 환불. 매출내역 총매출과 동일 기준(후불제라 plan.totalPrice로는 0이 나옴)
+  // 매출내역과 값이 일치하도록 청구를 먼저 최신화
+  if(typeof ensurePtRecurringSlots==='function')ensurePtRecurringSlots();
+  if(typeof ensureGrpBillings==='function')ensureGrpBillings();
+  if(typeof ensurePtBillings==='function')ensurePtBillings();
+  const _cm=y+'-'+String(m2+1).padStart(2,'0');
+  const _todayS=_grpFmtD(new Date());
+  let mTotal=0,mBillCnt=0;
+  grpBillings.filter(b=>b.month===_cm).forEach(b=>{mTotal+=b.amount||0;if((b.amount||0)>0)mBillCnt++;});
+  ptBillings.filter(b=>b.month===_cm).forEach(b=>{mTotal+=b.amount||0;if((b.amount||0)>0)mBillCnt++;});
+  members.forEach(mb=>(mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&!p.refunded&&p.status!=='cancelled').forEach(plan=>{
+    const pps=plan.pricePerSession||0;
+    slots.forEach(s=>{if(s.date&&s.date.slice(0,7)===_cm&&s.date>_todayS&&slotMemberEntries(s).some(x=>x.memberId===mb.id&&x.planId===plan.id)){mTotal+=pps;mBillCnt++;}});
+  }));
+  refunds.forEach(r=>{if(!r.processedAt)return;const d=new Date(r.processedAt);if(d.getFullYear()===y&&d.getMonth()===m2)mTotal-=r.refundAmount||0;});
 
   // 성비
   const maleC=members.filter(m=>m.gender==='남').length;
@@ -4599,8 +4614,8 @@ function renderPcHome(ct,acts){
     if(!entries.length)inflowHtml+='<div style="color:#252830;font-size:12px;">데이터 없음</div>';
     ic.innerHTML=inflowHtml+'</div>';
 
-    // ── 3열: 강사별 회원수 / 강사별 이번달 매출 / 이번달 매출요약 ──
-    const g3=ct.appendChild(_mk('div','pc-dash-g3'));
+    // ── 2열: 강사별 회원수 / 이번달 총매출 ──
+    const g3=ct.appendChild(_mk('div','pc-dash-g2'));
 
     const tc=g3.appendChild(_mk('div','pc-card pc-card-anim'));
     const trList=Object.values(trStats).sort((a,b)=>b.cnt-a.cnt);
@@ -4610,20 +4625,12 @@ function renderPcHome(ct,acts){
     if(!trainers.length)trHtml+='<div style="color:#252830;font-size:12px;">직원 없음</div>';
     tc.innerHTML=trHtml+'</div>';
 
-    const trc=g3.appendChild(_mk('div','pc-card pc-card-anim'));
-    const trRevList=Object.values(trStats).sort((a,b)=>b.rev-a.rev);
-    const maxRev=Math.max(1,...trRevList.map(t=>t.rev));
-    let trRevHtml='<div class="pc-card-ttl">강사별 이번달 매출</div><div style="display:flex;flex-direction:column;gap:9px;margin-top:6px;">';
-    trRevList.forEach(t=>{trRevHtml+='<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:12px;color:#c4cde8;width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">'+t.name+'</span><div style="flex:1;height:8px;background:#1a1c22;border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+Math.round(t.rev/maxRev*100)+'%;background:'+t.color+';border-radius:4px;"></div></div><span style="font-size:12px;font-weight:700;color:#e2e8f0;min-width:52px;text-align:right;">'+(t.rev>0?(t.rev/10000).toFixed(1)+'만':'-')+'</span></div>';});
-    if(!trainers.length)trRevHtml+='<div style="color:#252830;font-size:12px;">직원 없음</div>';
-    trc.innerHTML=trRevHtml+'</div>';
-
     const sc=g3.appendChild(_mk('div','pc-card pc-card-anim'));
     const _mgoal=ld('jbog10_mgoal',2000000);
-    const _pct=Math.min(mRev/_mgoal*100,100).toFixed(1);
-    sc.innerHTML='<div class="pc-card-ttl">이번달 수업권 매출</div>'
-      +'<div style="font-size:28px;font-weight:800;color:#e2e8f0;margin:8px 0 4px;">'+mRev.toLocaleString()+'원</div>'
-      +'<div style="font-size:12px;color:#4a5068;margin-bottom:16px;">수업권 '+mCnt+'건</div>'
+    const _pct=Math.min(mTotal/_mgoal*100,100).toFixed(1);
+    sc.innerHTML='<div class="pc-card-ttl">이번달 총매출 (결제완료+미결제+예정)</div>'
+      +'<div style="font-size:28px;font-weight:800;color:#3dc87a;margin:8px 0 4px;">'+mTotal.toLocaleString()+'원</div>'
+      +'<div style="font-size:12px;color:#4a5068;margin-bottom:16px;">청구·예정 '+mBillCnt+'건</div>'
       +'<div class="pc-bar" style="height:8px;"><div class="pc-bar-fill" style="width:'+_pct+'%;background:#818cf8;"></div></div>'
       +'<div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7494;margin-top:5px;"><span>'+(m2+1)+'월 '+_pct+'%</span><span id="pc-mgoal-lbl" style="cursor:pointer;text-decoration:underline dotted;color:#818cf8;" title="클릭하여 목표 수정">목표 '+(_mgoal/10000).toFixed(0)+'만원</span></div>';
     document.getElementById('pc-mgoal-lbl').onclick=()=>{
