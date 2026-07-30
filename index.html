@@ -5091,8 +5091,7 @@ function openPcPayment(mbId,parentBox,parentClose){
       priceI.oninput=function(){this.value=fmtMoney(this.value);};
       // 수업 시간
       const r3=box.appendChild(document.createElement('div'));r3.className='pcm-row2';
-      const durF=r3.appendChild(_f('수업 시간 (분)',true));const durI=durF.appendChild(_inp('예) 60','number'));durI.min='1';durI.value='60';
-      const tpF=r3.appendChild(_f('강사 회당 페이 (원)'));const tpI=tpF.appendChild(_inp('예) 30000','number'));tpI.min='0';
+      const durF=r3.appendChild(_f('수업 시간',true));const durI=durF.appendChild(_sel([30,60,90,120,150,180,210].map(d=>({v:d,l:d+'분'}))));durI.value='60';
       // 결제 수단
       const payF=box.appendChild(_f('결제 수단 (참고용)'));
       const payRow=payF.appendChild(document.createElement('div'));payRow.style.cssText='display:flex;gap:8px;';
@@ -5112,7 +5111,7 @@ function openPcPayment(mbId,parentBox,parentClose){
         const now=new Date();
         const todayStr2=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
         const plan={id:'pl'+Date.now(),productId:'__custom__',productName:name,productType:'pt',billingMode:'postpaid',
-          duration:dur,pricePerSession:price,trainerPay:parseInt(tpI.value)||0,totalPrice:0,sessions:0,status:'active',
+          duration:dur,pricePerSession:price,totalPrice:0,sessions:0,status:'active',
           paymentMethod:cPayMethod,startDate:todayStr2,addedAt:now.getTime()};
         mb.plans=mb.plans||[];mb.plans.push(plan);sv('jbog10_mb',members);
         close();closePayModal();
@@ -5360,11 +5359,12 @@ function renderPcSessions(ct,acts){
     const plan=s.planId&&mb?(mb.plans||[]).find(p=>p.id===s.planId):null;
     const isOC=s.type==='OT'||s.type==='상담';
     const memo=s.type==='상담'?'💬 '+(s.memo||'-'):s.type==='OT'?('OT'+(s.memo?' · '+s.memo:'')):plan?(plan.productName||plan.sessions+'회권'):(s.memo||'-');
-    // 개인레슨 강사료: 진행된(오늘까지) 수업만, plan.trainerPay ▸ 상품 trainerPay
+    // 개인레슨 강사료: 진행된(오늘까지) 수업만, (세션 강사 × 수업시간)별 페이
     let ptPay=null;
     if((s.type||'').includes('수업')&&s.date<=todayStr){
-      if(plan&&plan.trainerPay!=null)ptPay=plan.trainerPay;
-      else{const prd=plan?products.find(pr=>pr.id===plan.productId):null;ptPay=(prd&&prd.trainerPay)||0;}
+      const trn=trainers.find(t=>t.id===s.trainerId);
+      const dur=plan?plan.duration:null;
+      ptPay=(trn&&trn.durationPay&&dur!=null)?(trn.durationPay[dur]||0):0;
     }
     rows.push({kind:'pt',date:s.date,time:(s.time||'').slice(0,5),trainerId:s.trainerId,name:mb?mb.name:(s.memo&&s.type==='상담'?s.memo.split('\n')[0]:s.memo||'-'),type:s.type||'-',memo,used:isOC?'-':(plan?getPlanUsed(plan.id)+'회':'-'),rem:isOC?'-':(plan?getPlanRemain(plan)+'':'-'),pay:canSeePay(s.trainerId)?ptPay:null});
   });
@@ -5830,16 +5830,14 @@ function openPcEditProduct(prodId,onSaved){
     const priceF=box.appendChild(_f(p.type==='pt'?'회당 가격':'가격',true));const priceI=priceF.appendChild(_inp('가격'));priceI.value=fmtMoney(p.price);priceI.oninput=function(){this.value=fmtMoney(this.value);};
     const durRow=box.appendChild(_f('수업 시간 (분)'));
     if(p.type==='pt'){
-      const durS=durRow.appendChild(_inp('예) 60','number'));durS.min='1';durS.style.width='100%';
-      durS.value=p.duration||60;
-      const payF=box.appendChild(_f('강사 회당 페이 (원)'));const payI=payF.appendChild(_inp('예) 30000 · 1회당 강사 지급액'));payI.type='number';payI.min='0';payI.style.width='100%';payI.value=p.trainerPay||'';
+      const durS=durRow.appendChild(_sel([30,60,90,120,150,180,210].map(d=>({v:d,l:d+'분'}))));durS.style.width='100%';
+      durS.value=String(p.duration||60);
       const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='24px';
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
         const name=nameI.value.trim();const price=parseMoney(priceI.value);
         if(!name){alert('상품명을 입력해주세요.');return;}if(!price){alert('가격을 입력해주세요.');return;}
-        if(!(parseInt(durS.value)>=1)){alert('수업 시간을 입력해주세요.');return;}
-        p.name=name;p.price=price;p.duration=parseInt(durS.value);p.trainerPay=parseInt(payI.value)||0;
+        p.name=name;p.price=price;p.duration=parseInt(durS.value);
         sv('jbog10_pr',products);close();
         if(onSaved)onSaved();else renderPcContent();
       };
@@ -5873,11 +5871,10 @@ function openPcCreateProduct(onCreated){
       btn.style.cssText='flex:1;min-width:80px;padding:12px;border-radius:9px;border:1.5px solid '+(isOn?'#818cf8':'#1e2026')+';background:'+(isOn?'rgba(129,140,248,.1)':'#0f1117')+';color:'+(isOn?'#818cf8':'#6b7494')+';font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;';
       btn.textContent=t.l;typeBtns.push({btn,v:t.v});
       btn.onclick=()=>{selType=t.v;typeBtns.forEach(({btn:b,v})=>{b.style.borderColor=selType===v?'#818cf8':'#1e2026';b.style.background=selType===v?'rgba(129,140,248,.1)':'#0f1117';b.style.color=selType===v?'#818cf8':'#6b7494';});
-        durRow.style.display=selType==='pt'?'block':'none';payRow.style.display=selType==='pt'?'block':'none';
+        durRow.style.display=selType==='pt'?'block':'none';
         grpRow.style.display=selType==='group'?'block':'none';grpSpmRow.style.display=selType==='group'?'block':'none';};
     });
-    const durRow=box.appendChild(_f('수업 시간 (분)',true));const durS=durRow.appendChild(_inp('예) 60','number'));durS.min='1';durS.style.width='100%';durS.value='60';
-    const payRow=box.appendChild(_f('강사 회당 페이 (원)'));const payI=payRow.appendChild(_inp('예) 30000 · 1회당 강사 지급액'));payI.type='number';payI.min='0';payI.style.width='100%';
+    const durRow=box.appendChild(_f('수업 시간',true));const durS=durRow.appendChild(_sel([30,60,90,120,150,180,210].map(d=>({v:d,l:d+'분'}))));durS.style.width='100%';durS.value='60';
     // 그룹수업 전용 필드
     const grpRow=box.appendChild(_f('연결 그룹수업'));
     const grpWrap=grpRow.appendChild(document.createElement('div'));grpWrap.style.cssText='display:flex;gap:8px;';
@@ -5907,7 +5904,6 @@ function openPcCreateProduct(onCreated){
       if(selType==='pt'&&!(parseInt(durS.value)>=1)){alert('수업 시간을 입력해주세요.');return;}
       const prod={id:'pr'+Date.now(),name,price,type:selType,
         duration:selType==='pt'?parseInt(durS.value):undefined,
-        trainerPay:selType==='pt'?(parseInt(payI.value)||0):undefined,
         groupClassId:selType==='group'?grpS.value:undefined,
         sessionsPerMonth:selType==='group'?parseInt(grpSpmI.value):undefined,
         createdAt:Date.now()};
@@ -6544,19 +6540,32 @@ function openPcStaffModal(tr2, onSave) {
       btn.onclick = () => {selColor = i; colBtns.forEach((b,j) => b.style.borderColor = j===i?'#fff':'transparent');};
       return btn;
     });
+    // 개인레슨 강사료 (수업시간별 · 회당) — 강사별 페이. 세션로그에서 (세션 강사 × 수업시간)으로 자동 책정
+    const DURS=[30,60,90,120,150,180,210];
+    const dpF=box.appendChild(_f('개인레슨 강사료 (수업시간별 · 회당)'));
+    const dpGrid=dpF.appendChild(document.createElement('div'));dpGrid.style.cssText='display:grid;grid-template-columns:repeat(2,1fr);gap:8px;';
+    const dpInputs={};
+    DURS.forEach(d=>{
+      const cell=dpGrid.appendChild(document.createElement('div'));cell.style.cssText='display:flex;align-items:center;gap:6px;';
+      cell.appendChild(Object.assign(document.createElement('span'),{textContent:d+'분'})).style.cssText='font-size:12px;color:#6b7494;width:40px;flex-shrink:0;';
+      const inp=cell.appendChild(document.createElement('input'));inp.type='number';inp.min='0';inp.placeholder='원';inp.className='pcm-input';inp.style.cssText='flex:1;padding:7px 9px;font-size:13px;';
+      inp.value=(tr2&&tr2.durationPay&&tr2.durationPay[d]!=null)?tr2.durationPay[d]:'';
+      dpInputs[d]=inp;
+    });
     const btns = box.appendChild(document.createElement('div')); btns.className = 'pcm-btns'; btns.style.marginTop = '24px';
     btns.appendChild(Object.assign(document.createElement('button'), {className:'pcm-btn-sec', textContent:'취소'})).onclick = close;
     btns.appendChild(Object.assign(document.createElement('button'), {className:'pcm-btn-pri', textContent: tr2 ? '저장' : '추가'})).onclick = () => {
       const name = nameI.value.trim();
       if (!name) {alert('이름을 입력해주세요.'); return;}
+      const durationPay={};DURS.forEach(d=>{const v=parseInt(dpInputs[d].value)||0;if(v)durationPay[d]=v;});
       if (tr2) {
-        tr2.name = name; tr2.role = roleI.value.trim(); tr2.phone = phoneI.value.trim(); tr2.color = selColor;
+        tr2.name = name; tr2.role = roleI.value.trim(); tr2.phone = phoneI.value.trim(); tr2.color = selColor; tr2.durationPay = durationPay;
         if (sabanI.value) tr2.saban = sabanI.value;
         sv('jbog10_tr', trainers);
       } else {
         const saban = sabanI.value;
         if (!saban) {alert('로그인 번호를 입력해주세요.'); return;}
-        trainers.push({id:'tr'+Date.now(), name, role:roleI.value.trim(), phone:phoneI.value.trim(), color:selColor, saban});
+        trainers.push({id:'tr'+Date.now(), name, role:roleI.value.trim(), phone:phoneI.value.trim(), color:selColor, saban, durationPay});
         sv('jbog10_tr', trainers);
       }
       close(); renderPcContent(); updatePcUser();
