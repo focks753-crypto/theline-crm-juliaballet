@@ -521,7 +521,9 @@ body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-se
 /* ── 그룹수업 월간 달력 ── */
 .grp-month{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#1e2026;border-radius:10px;overflow:hidden;margin-bottom:16px;}
 .grp-month-day-hdr{padding:7px 4px;font-size:11px;font-weight:700;color:#6b7494;background:#0a0c10;text-align:center;}
-.grp-month-cell{background:#0f1117;min-height:74px;padding:4px;overflow:hidden;}
+.grp-month-cell{background:#0f1117;min-height:88px;padding:5px;overflow:hidden;cursor:pointer;transition:background .15s;}
+.grp-month-cell:hover{background:#16181f;}
+.grp-month-more{font-size:9px;color:#6496ff;margin-top:1px;cursor:pointer;font-weight:700;}
 .grp-month-cell.other-m{background:#0a0c0f;}
 .grp-month-cell.is-today{background:#0c0f1a;}
 .grp-month-date-n{font-size:11px;font-weight:700;color:#4a5068;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 3px;}
@@ -7079,12 +7081,12 @@ function _renderGrpMonth(ct){
     const cell=grid.appendChild(document.createElement('div'));cell.className='grp-month-cell'+(isToday?' is-today':'');
     const dn=cell.appendChild(document.createElement('div'));dn.className='grp-month-date-n'+(isToday?' today':'');dn.textContent=day;
     const dayClasses=groupClasses.filter(gc=>gc.active!==false&&(gc.days||[]).includes(dow)).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
-    dayClasses.forEach(gc=>{
+    const MAX_SHOW=3;
+    dayClasses.slice(0,MAX_SHOW).forEach(gc=>{
       const sess=grpSessMap[gc.id+'_'+dateStr];
       const isCancelled=sess&&sess.status==='cancelled';
       // 구독 등록 회원 수 (카운트 기준)
       const subCount=members.filter(mb=>(mb.plans||[]).some(p=>p.productType==='group'&&p.groupClassId===gc.id&&p.status!=='cancelled')).length;
-      const attended=((sess&&sess.reservations)||[]).length;
       const booked=subCount; // 등록 회원 수 기준
       const cap=gc.capacity||1;const pct=booked/cap;
       const sc=isCancelled?'grp-cancel':pct>=1?'grp-full':pct>=0.5?'grp-busy':'grp-avail';
@@ -7094,15 +7096,57 @@ function _renderGrpMonth(ct){
       const trName=(trainers.find(t=>t.id===_effTid)||{name:''}).name;
       const slot=cell.appendChild(document.createElement('div'));slot.className='grp-slot-sm '+sc;
       slot.title=gc.name+(gc.time?' ('+gc.time+')':'')+(trName?' · '+trName+_tag:'')+(isCancelled?' [폐강]':' '+booked+'/'+cap+'명');
-      slot.innerHTML='<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+gc.name+(isCancelled?' <span style="opacity:.7">폐강</span>':'<span style="opacity:.85"> '+booked+'/'+cap+'</span>')+'</div>'
-        +(trName?'<div style="font-size:9px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+trName+_tag+'</div>':'');
-      slot.onclick=()=>openGrpSessionModal(gc,dateStr,sess);
+      slot.innerHTML='<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(gc.time?'<span style="opacity:.6">'+gc.time.slice(0,5)+'</span> ':'')+gc.name+(isCancelled?' <span style="opacity:.7">폐강</span>':'<span style="opacity:.85"> '+booked+'/'+cap+'</span>')+'</div>';
+      slot.onclick=e=>{e.stopPropagation();openGrpSessionModal(gc,dateStr,sess);};
     });
+    if(dayClasses.length>MAX_SHOW){
+      const more=cell.appendChild(document.createElement('div'));more.className='grp-month-more';
+      more.textContent='+'+(dayClasses.length-MAX_SHOW)+'개 더';
+      more.onclick=e=>{e.stopPropagation();openGrpDayView(dateStr);};
+    }
+    if(dayClasses.length)cell.onclick=()=>openGrpDayView(dateStr);
   }
   // 뒤 빈칸
   const rem=(startDow+lastDay)%7;if(rem>0){for(let i=0;i<7-rem;i++){const c=grid.appendChild(document.createElement('div'));c.className='grp-month-cell other-m';}}
 }
 
+// 하루 그룹수업 전체 목록 모달 (달력 셀 "+N개 더" / 셀 클릭 시)
+function openGrpDayView(dateStr){
+  const DAY_KO=['일','월','화','수','목','금','토'];
+  const dObj=new Date(dateStr+'T00:00:00');const dow=dObj.getDay();
+  const dayClasses=groupClasses.filter(gc=>gc.active!==false&&(gc.days||[]).includes(dow)).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  pcModal((box,close)=>{
+    box.style.cssText+=';width:560px;max-height:88vh;overflow-y:auto;';
+    const hdr=box.appendChild(document.createElement('div'));
+    hdr.style.cssText='font-size:17px;font-weight:800;color:#e2e8f0;margin-bottom:16px;padding-right:40px;';
+    hdr.textContent=dateStr+' ('+DAY_KO[dow]+') · 그룹수업 '+dayClasses.length+'개';
+    if(!dayClasses.length){box.appendChild(Object.assign(document.createElement('div'),{textContent:'이 날 예정된 그룹수업이 없습니다.'})).style.cssText='text-align:center;padding:32px;color:#3a3f58;font-size:14px;';return;}
+    dayClasses.forEach(gc=>{
+      const sess=grpSessMap[gc.id+'_'+dateStr];
+      const isCancelled=sess&&sess.status==='cancelled';
+      const booked=members.filter(mb=>(mb.plans||[]).some(p=>p.productType==='group'&&p.groupClassId===gc.id&&p.status!=='cancelled')).length;
+      const attended=((sess&&sess.reservations)||[]).length;
+      const cap=gc.capacity||1;const pct=booked/cap;
+      const barC=isCancelled?'#4a5068':pct>=1?'#f87171':pct>=0.5?'#fbbf24':'#3dc87a';
+      const _effTid=effectiveGrpTrainerId(gc,dateStr,sess);
+      const _subT=(sess&&sess.trainerId&&sess.trainerId!==gc.trainerId);
+      const _tag=_subT?' (대타)':(_effTid!==gc.trainerId?' (담당변경)':'');
+      const trName=(trainers.find(t=>t.id===_effTid)||{name:'-'}).name;
+      const card=box.appendChild(document.createElement('div'));
+      card.style.cssText='background:#0f1117;border:1px solid #1e2026;border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;'+(isCancelled?'opacity:.6;':'');
+      card.onmouseenter=()=>card.style.background='#16181f';card.onmouseleave=()=>card.style.background='#0f1117';
+      const bar=card.appendChild(document.createElement('div'));bar.style.cssText='width:4px;border-radius:2px;align-self:stretch;flex-shrink:0;background:'+barC+';';
+      const info=card.appendChild(document.createElement('div'));info.style.cssText='flex:1;min-width:0;';
+      const r1=info.appendChild(document.createElement('div'));r1.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap;';
+      r1.appendChild(Object.assign(document.createElement('span'),{textContent:(gc.time||'')})).style.cssText='font-size:14px;font-weight:800;color:#e2e8f0;';
+      r1.appendChild(Object.assign(document.createElement('span'),{textContent:gc.name})).style.cssText='font-size:13px;color:#c4cde8;';
+      if(isCancelled)r1.appendChild(Object.assign(document.createElement('span'),{textContent:'폐강'})).style.cssText='font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:#200d0d;color:#f87171;';
+      const r2=info.appendChild(document.createElement('div'));r2.style.cssText='font-size:11px;color:#4a5068;';
+      r2.textContent='강사: '+trName+_tag+' · 등록 '+booked+'/'+cap+'명 · 출석 '+attended+'명';
+      card.onclick=()=>{close();openGrpSessionModal(gc,dateStr,sess);};
+    });
+  });
+}
 function _renderGrpConfig(ct){
   const hdrRow=ct.appendChild(document.createElement('div'));
   hdrRow.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;';
