@@ -5198,9 +5198,14 @@ function openPcPayment(mbId,parentBox,parentClose){
       card.onmouseenter=()=>{if(!isSel)card.style.borderColor='#252830';};
       card.onmouseleave=()=>{if(!isSel)card.style.borderColor='#1e2026';};
       const _pInfo={bg:'rgba(129,140,248,.2)',c:'#818cf8',l:'개인레슨'};
-      const tbdg=card.appendChild(document.createElement('div'));
-      tbdg.style.cssText='display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;align-self:flex-start;background:'+_pInfo.bg+';color:'+_pInfo.c+';white-space:nowrap;';
+      const hdr=card.appendChild(document.createElement('div'));hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:6px;';
+      const tbdg=hdr.appendChild(document.createElement('div'));
+      tbdg.style.cssText='display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;background:'+_pInfo.bg+';color:'+_pInfo.c+';white-space:nowrap;';
       tbdg.textContent=_pInfo.l;
+      const editBtn=hdr.appendChild(document.createElement('button'));editBtn.type='button';editBtn.textContent='수정';
+      editBtn.style.cssText='padding:3px 10px;border-radius:6px;border:1px solid #3a3f58;background:transparent;color:#a5b4fc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;';
+      editBtn.onmouseenter=()=>editBtn.style.borderColor='#818cf8';editBtn.onmouseleave=()=>editBtn.style.borderColor='#3a3f58';
+      editBtn.onclick=(e)=>{e.stopPropagation();openPcEditProduct(p.id,()=>{if(!products.some(x=>x.id===selProductId))selProductId=null;renderGrid();updateRight();});};
       card.appendChild(Object.assign(document.createElement('div'),{textContent:p.name})).style.cssText='font-size:15px;font-weight:800;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
       const priceRow=card.appendChild(document.createElement('div'));priceRow.style.cssText='display:flex;align-items:baseline;gap:6px;';
       if(p.duration)priceRow.appendChild(Object.assign(document.createElement('div'),{textContent:p.duration+'분'})).style.cssText='font-size:13px;color:#6b7494;white-space:nowrap;';
@@ -5877,6 +5882,8 @@ function openPcEditProduct(prodId,onSaved){
       const durS=durRow.appendChild(_sel([30,60,90,120,150,180,210].map(d=>({v:d,l:d+'분'}))));durS.style.width='100%';
       durS.value=String(p.duration||60);
       const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='24px';
+      const delB=btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'삭제'}));delB.style.cssText='color:#f87171;border-color:rgba(248,113,113,.5);margin-right:auto;';
+      delB.onclick=()=>{if(!confirm('"'+p.name+'" 상품을 삭제할까요?\n(이미 등록된 회원 요금제는 그대로 유지됩니다)'))return;const i=products.findIndex(x=>x.id===p.id);if(i>=0)products.splice(i,1);sv('jbog10_pr',products);close();if(onSaved)onSaved();else renderPcContent();};
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
         const name=nameI.value.trim();const price=parseMoney(priceI.value);
@@ -5888,6 +5895,8 @@ function openPcEditProduct(prodId,onSaved){
     } else {
       durRow.style.display='none';
       const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='24px';
+      const delB=btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'삭제'}));delB.style.cssText='color:#f87171;border-color:rgba(248,113,113,.5);margin-right:auto;';
+      delB.onclick=()=>{if(!confirm('"'+p.name+'" 상품을 삭제할까요?\n(이미 등록된 회원 요금제는 그대로 유지됩니다)'))return;const i=products.findIndex(x=>x.id===p.id);if(i>=0)products.splice(i,1);sv('jbog10_pr',products);close();if(onSaved)onSaved();else renderPcContent();};
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
       btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
         const name=nameI.value.trim();const price=parseMoney(priceI.value);
@@ -7057,6 +7066,51 @@ function _renderGrpBilling(ct){
   });
 }
 
+// ── 청구 문자(SMS) 양식 ──────────────────────────────────────────────────
+// 문구(인사말)는 관리자가 설정, 회원별 수업/횟수/금액 내역은 자동으로 붙음
+const SMS_DEFAULT_TPL='안녕하세요, 줄리아발레아카데미입니다.\n{월}월 청구서와 결제링크·계좌번호 보내드립니다.\n확인 부탁드리며, 수업 내용은 아래와 같이 공유드립니다.';
+function _smsTpl(){const c=ld('jbog10_smscfg',null);return (c&&typeof c.template==='string')?c.template:SMS_DEFAULT_TPL;}
+// 특정 회원의 해당 월 청구를 문자 한 통으로 조립 (인사말 + 수업별 횟수/금액 + 합계)
+function buildMemberSms(memberId,curMonth,tplOverride){
+  const mb=members.find(m=>m.id===memberId);
+  const monthNum=parseInt(curMonth.slice(5,7),10);const yearNum=curMonth.slice(0,4);
+  const intro=(typeof tplOverride==='string'?tplOverride:_smsTpl()).replace(/\{월\}/g,monthNum).replace(/\{년\}/g,yearNum);
+  const gb=grpBillings.filter(b=>b.memberId===memberId&&b.month===curMonth);
+  const pb=ptBillings.filter(b=>b.memberId===memberId&&b.month===curMonth&&(b.sessions||0)>0);
+  const lines=[];let total=0;
+  gb.forEach(b=>{lines.push('▶ '+(b.groupClassName||'그룹수업')+' : '+(b.sessions||0)+'회 · '+(b.amount||0).toLocaleString()+'원');total+=b.amount||0;});
+  pb.forEach(b=>{lines.push('▶ '+(b.productName||'개인레슨')+' : '+(b.sessions||0)+'회 · '+(b.amount||0).toLocaleString()+'원');total+=b.amount||0;});
+  const msg=intro+'\n\n['+(mb?mb.name:'')+'] 님\n'+(lines.length?lines.join('\n'):'· 이번 달 수업 내역 없음')+'\n──────────\n합계 : '+total.toLocaleString()+'원';
+  return {name:mb?mb.name:'',phone:(mb&&mb.phone)||'',msg,total};
+}
+// 문자 문구 설정 모달
+function openSmsCfgModal(curMonth){
+  pcModal((box,close)=>{
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'청구 문자 문구 설정'}));
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub',textContent:'문자 맨 위 인사말을 입력하세요. 아래 회원별 수업/횟수/금액 내역은 자동으로 붙습니다.'}));
+    const ta=box.appendChild(document.createElement('textarea'));ta.value=_smsTpl();
+    ta.style.cssText='width:100%;min-height:130px;padding:12px;border-radius:8px;border:1px solid #2a2d3a;background:#111318;color:#e2e8f0;font-size:13px;line-height:1.7;font-family:inherit;resize:vertical;box-sizing:border-box;';
+    box.appendChild(Object.assign(document.createElement('div'),{textContent:'※ {월}=청구 월(숫자), {년}=연도로 자동 치환. 예) "{월}월 청구서" → "'+(curMonth?parseInt(curMonth.slice(5,7),10):8)+'월 청구서"'})).style.cssText='font-size:11px;color:#6b7494;margin-top:8px;line-height:1.6;';
+    box.appendChild(Object.assign(document.createElement('div'),{textContent:'미리보기'})).style.cssText='font-size:11px;font-weight:700;color:#3a3f58;letter-spacing:1px;margin:14px 0 6px;';
+    const prev=box.appendChild(document.createElement('div'));prev.style.cssText='padding:12px;border-radius:8px;background:#0a0c10;border:1px solid #1e2026;font-size:12px;color:#9aa3b8;white-space:pre-wrap;line-height:1.65;max-height:200px;overflow:auto;';
+    const mNum=curMonth?parseInt(curMonth.slice(5,7),10):8;const yNum=curMonth?curMonth.slice(0,4):'2026';
+    function upPrev(){const intro=ta.value.replace(/\{월\}/g,mNum).replace(/\{년\}/g,yNum);prev.textContent=intro+'\n\n[홍길동] 님\n▶ 인텐3 [수,목,금 16시30분] : 12회 · 480,000원\n▶ 60분 개인레슨 : 4회 · 400,000원\n──────────\n합계 : 880,000원';}
+    ta.oninput=upPrev;upPrev();
+    const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='18px';
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'기본값'})).onclick=()=>{ta.value=SMS_DEFAULT_TPL;upPrev();};
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{sv('jbog10_smscfg',{template:ta.value});close();alert('문자 문구가 저장되었습니다.');};
+  });
+}
+// 회원별 청구 문자 CSV(엑셀) 다운로드 — 한 행 = 한 회원(회원명·연락처·청구금액·문자내용)
+function dlSmsCsv(items,curMonth){
+  const memIds=[...new Set(items.map(x=>x.b.memberId))];
+  if(!memIds.length){alert('이 달 청구 내역이 없습니다.');return;}
+  const rows=[['회원명','연락처','청구금액','문자내용'].join(',')];
+  memIds.forEach(mid=>{const s=buildMemberSms(mid,curMonth);rows.push(['"'+s.name.replace(/"/g,'""')+'"','"'+s.phone+'"',s.total,'"'+s.msg.replace(/"/g,'""')+'"'].join(','));});
+  const blob=new Blob(['﻿'+rows.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='청구문자양식_'+curMonth+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+}
 // ── 개인레슨 청구 관리 ────────────────────────────────────────────────────
 // ── 통합 청구 관리 (그룹수업 + 개인레슨) ──────────────────────────────────
 function _renderBilling(ct){
@@ -7085,6 +7139,9 @@ function _renderBilling(ct){
     const blob=new Blob(['﻿'+rows.join('\n')],{type:'text/csv;charset=utf-8;'});
     const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='청구내역_'+curMonth+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   };
+  // 문자 문구 설정 + 청구 문자양식(엑셀) 다운로드
+  const smsCfgBtn=nav.appendChild(document.createElement('button'));smsCfgBtn.className='pc-tbtn';smsCfgBtn.textContent='⚙ 문자 설정';smsCfgBtn.style.cssText='color:#818cf8;border-color:#818cf8;padding:7px 14px;';smsCfgBtn.onclick=()=>openSmsCfgModal(curMonth);
+  const smsDlBtn=nav.appendChild(document.createElement('button'));smsDlBtn.className='pc-tbtn';smsDlBtn.textContent='⬇ 문자양식';smsDlBtn.style.cssText='color:#fbbf24;border-color:#fbbf24;padding:7px 14px;';smsDlBtn.onclick=()=>dlSmsCsv(items,curMonth);
   if(!items.length){ct.appendChild(Object.assign(document.createElement('div'),{className:'sal-empty',textContent:'이 달 청구 내역이 없습니다.'}));}
   else{
     const paid=items.filter(x=>x.b.paid).length;const unpaid=items.length-paid;
