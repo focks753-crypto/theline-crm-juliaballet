@@ -5259,7 +5259,7 @@ function openPcPayment(mbId,parentBox,parentClose){
       pWrap.appendChild(Object.assign(document.createElement('div'),{textContent:'월 금액 (원)'})).style.cssText='font-size:11px;color:#3a3f58;margin-bottom:5px;';
       const pI=pWrap.appendChild(document.createElement('input'));pI.type='text';pI.value=(selGrpP||0).toLocaleString();pI.placeholder='예) 100,000';pI.style.cssText='width:100%;padding:9px 10px;border:1.5px solid #fbbf24;border-radius:6px;background:#0a0c10;color:#fbbf24;font-size:15px;font-weight:800;text-align:right;outline:none;box-sizing:border-box;font-family:inherit;';
       const ppLbl=c.appendChild(document.createElement('div'));ppLbl.style.cssText='font-size:11px;color:#6b7494;margin-bottom:8px;';
-      function _upG(){selGrpN=parseInt(nI.value)||0;const raw=pI.value.replace(/[^0-9]/g,'');selGrpP=parseInt(raw)||0;const cur=pI.selectionStart;pI.value=selGrpP.toLocaleString();try{pI.setSelectionRange(cur,cur);}catch(e){}ppLbl.textContent=(selGrpN>0&&selGrpP>0)?('→ 회당 '+Math.round(selGrpP/selGrpN).toLocaleString()+'원 · 결석 1회당 차감'):'';}
+      function _upG(){selGrpN=parseInt(nI.value)||0;const oldVal=pI.value;const selPos=pI.selectionStart||0;const digitsBefore=(oldVal.slice(0,selPos).match(/[0-9]/g)||[]).length;selGrpP=parseInt(oldVal.replace(/[^0-9]/g,''))||0;const newVal=selGrpP.toLocaleString();pI.value=newVal;let dc=0,np=newVal.length;if(digitsBefore>0){for(let k=0;k<newVal.length;k++){if(/[0-9]/.test(newVal[k])){dc++;if(dc===digitsBefore){np=k+1;break;}}}}else{np=0;}try{pI.setSelectionRange(np,np);}catch(e){}ppLbl.textContent=(selGrpN>0&&selGrpP>0)?('→ 회당 '+Math.round(selGrpP/selGrpN).toLocaleString()+'원 · 결석 1회당 차감'):'';}
       nI.oninput=_upG;pI.oninput=_upG;_upG();
       const sdF=c.appendChild(document.createElement('div'));sdF.style.cssText='margin-bottom:8px;';
       sdF.innerHTML='<div style="font-size:11px;color:#3a3f58;margin-bottom:5px;">등록 시작일</div>';
@@ -7301,6 +7301,15 @@ function _renderGrpConfig(ct){
     const tb2=actTd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:gc.active===false?'활성화':'비활성'}));
     tb2.style.cssText='padding:4px 10px;font-size:12px;';
     tb2.onclick=async()=>{await svGrpClass({...gc,active:gc.active===false});renderPcContent();};
+    const db=actTd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'삭제'}));
+    db.style.cssText='padding:4px 10px;font-size:12px;margin-left:6px;color:#f87171;border-color:rgba(248,113,113,.5);';
+    db.onclick=async()=>{
+      const subCount=members.filter(mb=>(mb.plans||[]).some(p=>p.productType==='group'&&p.groupClassId===gc.id&&p.status!=='cancelled')).length;
+      let msg='"'+gc.name+'" 수업을 완전히 삭제할까요? (되돌릴 수 없음)';
+      if(subCount>0)msg='⚠️ 이 수업에 등록된 회원이 '+subCount+'명 있습니다.\n삭제하면 달력·수업설정에서 사라지지만 기존 청구/매출 내역은 남습니다.\n\n그래도 "'+gc.name+'" 수업을 삭제할까요?';
+      if(!confirm(msg))return;
+      await delGrpClass(gc.id);renderPcContent();
+    };
   });
 }
 
