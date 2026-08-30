@@ -5160,9 +5160,14 @@ function openPcPayment(mbId,parentBox,parentClose){
         card.style.cssText='background:'+(isSel?'rgba(251,191,36,.06)':'#0f1117')+';border:2px solid '+(isSel?'#fbbf24':'#1e2026')+';border-radius:12px;padding:'+(isMob?'12px':'16px')+';cursor:pointer;transition:all .15s;display:flex;flex-direction:column;gap:'+(isMob?'6':'8')+'px;';
         card.onmouseenter=()=>{if(!isSel)card.style.borderColor='#252830';};
         card.onmouseleave=()=>{if(!isSel)card.style.borderColor='#1e2026';};
-        const tbdg=card.appendChild(document.createElement('div'));
-        tbdg.style.cssText='display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;align-self:flex-start;background:rgba(251,191,36,.15);color:#fbbf24;';
+        const hdr=card.appendChild(document.createElement('div'));hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:6px;';
+        const tbdg=hdr.appendChild(document.createElement('div'));
+        tbdg.style.cssText='display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;background:rgba(251,191,36,.15);color:#fbbf24;';
         tbdg.textContent='그룹수업';
+        const editBtn=hdr.appendChild(document.createElement('button'));editBtn.type='button';editBtn.textContent='수정';
+        editBtn.style.cssText='padding:3px 10px;border-radius:6px;border:1px solid #3a3f58;background:transparent;color:#a5b4fc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;';
+        editBtn.onmouseenter=()=>editBtn.style.borderColor='#818cf8';editBtn.onmouseleave=()=>editBtn.style.borderColor='#3a3f58';
+        editBtn.onclick=(e)=>{e.stopPropagation();openGrpClassModal(gc,()=>{if(!groupClasses.some(g=>g.id===selGroupClassId))selGroupClassId=null;renderGrid();updateRight();});};
         card.appendChild(Object.assign(document.createElement('div'),{textContent:gc.name})).style.cssText='font-size:15px;font-weight:800;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
         const daysStr=(gc.days||[]).sort((a,b)=>a-b).map(d=>DAY_KSL[d]).join('/');
         card.appendChild(Object.assign(document.createElement('div'),{textContent:gc.time+' · '+daysStr+(gc.duration?' ('+gc.duration+'분)':'')})).style.cssText='font-size:11px;color:#6b7494;';
