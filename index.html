@@ -7166,10 +7166,35 @@ function openSmsCfgModal(curMonth){
 function dlSmsCsv(items,curMonth){
   const memIds=[...new Set(items.map(x=>x.b.memberId))];
   if(!memIds.length){alert('이 달 청구 내역이 없습니다.');return;}
-  const rows=[['회원명','연락처','청구금액','문자내용'].join(',')];
-  memIds.forEach(mid=>{const s=buildMemberSms(mid,curMonth);rows.push(['"'+s.name.replace(/"/g,'""')+'"','"'+s.phone+'"',s.total,'"'+s.msg.replace(/"/g,'""')+'"'].join(','));});
-  const blob=new Blob(['﻿'+rows.join('\r\n')],{type:'text/csv;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='청구문자양식_'+curMonth+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  const esc=(v)=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let body='';
+  memIds.forEach(mid=>{
+    const s=buildMemberSms(mid,curMonth);
+    const msgHtml=esc(s.msg).replace(/\n/g,'<br style="mso-data-placement:same-cell;">');
+    body+='<tr>'
+      +'<td class="nm">'+esc(s.name)+'</td>'
+      +'<td class="ph">'+esc(s.phone)+'</td>'
+      +'<td class="amt">'+(s.total||0)+'</td>'
+      +'<td class="msg">'+msgHtml+'</td>'
+      +'</tr>';
+  });
+  const html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">'
+    +'<head><meta charset="utf-8">'
+    +'<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>청구문자</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->'
+    +'<style>'
+    +'table{border-collapse:collapse;}'
+    +'col.cnm{width:110px;} col.cph{width:130px;} col.camt{width:110px;} col.cmsg{width:560px;}'
+    +'th{background:#5b4fc4;color:#fff;font-weight:bold;border:1px solid #999;padding:7px 9px;font-family:"맑은 고딕",sans-serif;font-size:12px;}'
+    +'td{border:1px solid #cfcfcf;padding:7px 9px;vertical-align:top;font-family:"맑은 고딕",sans-serif;font-size:12px;}'
+    +'td.nm{font-weight:bold;} td.ph{mso-number-format:"\\@";color:#555;}'
+    +'td.amt{text-align:right;font-weight:bold;mso-number-format:"\\#\\,\\#\\#0";}'
+    +'td.msg{white-space:normal;mso-data-placement:same-cell;line-height:1.5;}'
+    +'</style></head><body>'
+    +'<table><colgroup><col class="cnm"><col class="cph"><col class="camt"><col class="cmsg"></colgroup>'
+    +'<tr><th>회원명</th><th>연락처</th><th>청구금액</th><th>문자내용</th></tr>'
+    +body+'</table></body></html>';
+  const blob=new Blob(['﻿'+html],{type:'application/vnd.ms-excel;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='청구문자양식_'+curMonth+'.xls';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
 }
 // ── 개인레슨 청구 관리 ────────────────────────────────────────────────────
 // ── 통합 청구 관리 (그룹수업 + 개인레슨) ──────────────────────────────────
