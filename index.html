@@ -4333,9 +4333,9 @@ let pcCalY=new Date().getFullYear();let pcCalM=new Date().getMonth();
 const PC_NAV=[
   {id:'home',label:'홈',icon:''},
   {id:'customers',label:'고객관리',icon:'',subs:[{id:'members',label:'고객 관리'},{id:'consult',label:'상담 관리'},{id:'consult_hist',label:'상담 내역'},{id:'noweek',label:'주간미수업'},{id:'nextweek',label:'차주미수업'}]},
-  {id:'sales',label:'매출관리',icon:'',subs:[{id:'all',label:'매출내역'},{id:'bypkg',label:'상품별내역'},{id:'bypay',label:'결제수단별'},{id:'sessions',label:'세션로그'},{id:'ptbilling',label:'청구관리'},{id:'refund',label:'환불내역'}]},
-  {id:'groupclass',label:'그룹수업',icon:'',subs:[{id:'month',label:'월간 현황'},{id:'config',label:'수업 설정'},{id:'members',label:'회원 현황'}]},
-  {id:'settings',label:'센터설정',icon:'',subs:[{id:'staff',label:'직원관리',adminOnly:true},{id:'pkg',label:'상품관리'},{id:'avail',label:'예약설정'}]},
+  {id:'sales',label:'매출관리',icon:'',adminOnly:true,subs:[{id:'all',label:'매출내역'},{id:'bypkg',label:'상품별내역'},{id:'bypay',label:'결제수단별'},{id:'sessions',label:'세션로그'},{id:'ptbilling',label:'청구관리'},{id:'refund',label:'환불내역'}]},
+  {id:'groupclass',label:'그룹수업',icon:'',subs:[{id:'month',label:'월간 현황'},{id:'config',label:'수업 설정',adminOnly:true},{id:'members',label:'회원 현황'}]},
+  {id:'settings',label:'센터설정',icon:'',subs:[{id:'staff',label:'직원관리',adminOnly:true},{id:'pkg',label:'상품관리',adminOnly:true},{id:'avail',label:'예약설정'}]},
   {id:'calendar',label:'개인레슨 일정',icon:''},
   {id:'bookings',label:'예약관리',icon:''},
   {id:'analytics',label:'분석',icon:'',adminOnly:true},
@@ -4425,7 +4425,7 @@ function renderPcContent(){
     else renderPcCust(ct,acts);
   }
   else if(pcV==='calendar')renderPcCal(ct,acts);
-  else if(pcV==='sales')renderPcSales(ct,acts);
+  else if(pcV==='sales'){if(isAdminUser())renderPcSales(ct,acts);else ct.appendChild(Object.assign(document.createElement('div'),{className:'sal-empty',textContent:'관리자만 접근할 수 있습니다.'}));}
   else if(pcV==='bookings')renderPcBookings(ct,acts);
   else if(pcV==='groupclass')renderPcGroupClass(ct);
   else if(pcV==='analytics'){if(isAdminUser())renderPcAnalytics(ct,acts);else{ct.appendChild(Object.assign(document.createElement('div'),{className:'sal-empty',textContent:'관리자만 접근할 수 있습니다.'}));}}
@@ -4613,8 +4613,9 @@ function renderPcHome(ct,acts){
     if(!entries.length)inflowHtml+='<div style="color:#252830;font-size:12px;">데이터 없음</div>';
     ic.innerHTML=inflowHtml+'</div>';
 
-    // ── 2열: 강사별 회원수 / 이번달 총매출 ──
-    const g3=ct.appendChild(_mk('div','pc-dash-g2'));
+    // ── 강사별 회원수 (이번달 총매출은 관리자만) ──
+    const _homeAdm=isAdminUser();
+    const g3=ct.appendChild(_mk('div',_homeAdm?'pc-dash-g2':''));
 
     const tc=g3.appendChild(_mk('div','pc-card pc-card-anim'));
     const trList=Object.values(trStats).sort((a,b)=>b.cnt-a.cnt);
@@ -4624,21 +4625,23 @@ function renderPcHome(ct,acts){
     if(!trainers.length)trHtml+='<div style="color:#252830;font-size:12px;">직원 없음</div>';
     tc.innerHTML=trHtml+'</div>';
 
-    const sc=g3.appendChild(_mk('div','pc-card pc-card-anim'));
-    const _mgoal=ld('jbog10_mgoal',2000000);
-    const _pct=Math.min(mTotal/_mgoal*100,100).toFixed(1);
-    sc.innerHTML='<div class="pc-card-ttl">이번달 총매출 (결제완료+미결제+예정)</div>'
-      +'<div style="font-size:28px;font-weight:800;color:#3dc87a;margin:8px 0 4px;">'+mTotal.toLocaleString()+'원</div>'
-      +'<div style="font-size:12px;color:#4a5068;margin-bottom:16px;">청구·예정 '+mBillCnt+'건</div>'
-      +'<div class="pc-bar" style="height:8px;"><div class="pc-bar-fill" style="width:'+_pct+'%;background:#818cf8;"></div></div>'
-      +'<div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7494;margin-top:5px;"><span>'+(m2+1)+'월 '+_pct+'%</span><span id="pc-mgoal-lbl" style="cursor:pointer;text-decoration:underline dotted;color:#818cf8;" title="클릭하여 목표 수정">목표 '+(_mgoal/10000).toFixed(0)+'만원</span></div>';
-    document.getElementById('pc-mgoal-lbl').onclick=()=>{
-      const v=prompt('월 목표 매출을 입력하세요 (단위: 원)',_mgoal);
-      if(v===null)return;
-      const n=parseInt(v.replace(/,/g,''));
-      if(isNaN(n)||n<=0){alert('올바른 금액을 입력해주세요.');return;}
-      sv('jbog10_mgoal',n);renderPcContent();
-    };
+    if(_homeAdm){
+      const sc=g3.appendChild(_mk('div','pc-card pc-card-anim'));
+      const _mgoal=ld('jbog10_mgoal',2000000);
+      const _pct=Math.min(mTotal/_mgoal*100,100).toFixed(1);
+      sc.innerHTML='<div class="pc-card-ttl">이번달 총매출 (결제완료+미결제+예정)</div>'
+        +'<div style="font-size:28px;font-weight:800;color:#3dc87a;margin:8px 0 4px;">'+mTotal.toLocaleString()+'원</div>'
+        +'<div style="font-size:12px;color:#4a5068;margin-bottom:16px;">청구·예정 '+mBillCnt+'건</div>'
+        +'<div class="pc-bar" style="height:8px;"><div class="pc-bar-fill" style="width:'+_pct+'%;background:#818cf8;"></div></div>'
+        +'<div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7494;margin-top:5px;"><span>'+(m2+1)+'월 '+_pct+'%</span><span id="pc-mgoal-lbl" style="cursor:pointer;text-decoration:underline dotted;color:#818cf8;" title="클릭하여 목표 수정">목표 '+(_mgoal/10000).toFixed(0)+'만원</span></div>';
+      document.getElementById('pc-mgoal-lbl').onclick=()=>{
+        const v=prompt('월 목표 매출을 입력하세요 (단위: 원)',_mgoal);
+        if(v===null)return;
+        const n=parseInt(v.replace(/,/g,''));
+        if(isNaN(n)||n<=0){alert('올바른 금액을 입력해주세요.');return;}
+        sv('jbog10_mgoal',n);renderPcContent();
+      };
+    }
   }
 }
 // ═══ 고객관리 전체 시스템 ═══
@@ -5102,9 +5105,11 @@ function openPcPayment(mbId,parentBox,parentClose){
   head.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:'+(isMob?'12':'16')+'px;flex-shrink:0;gap:8px;';
   head.appendChild(Object.assign(document.createElement('div'),{textContent:'현장 판매'})).style.cssText='font-size:'+(isMob?'16':'18')+'px;font-weight:800;color:#e2e8f0;flex-shrink:0;';
   const btnGrp=head.appendChild(document.createElement('div'));btnGrp.style.cssText='display:flex;gap:6px;align-items:center;flex-shrink:0;';
-  const createBtn=btnGrp.appendChild(document.createElement('button'));createBtn.className='pc-tbtn pri';createBtn.textContent='+ 상품 생성';
-  createBtn.style.cssText='font-size:12px;padding:7px 14px;';
-  createBtn.onclick=()=>{openPcCreateProduct(()=>{selProductId=null;renderTypeArea();});};
+  if(isAdminUser()){
+    const createBtn=btnGrp.appendChild(document.createElement('button'));createBtn.className='pc-tbtn pri';createBtn.textContent='+ 상품 생성';
+    createBtn.style.cssText='font-size:12px;padding:7px 14px;';
+    createBtn.onclick=()=>{openPcCreateProduct(()=>{selProductId=null;renderTypeArea();});};
+  }
   const customBtn=btnGrp.appendChild(document.createElement('button'));customBtn.className='pc-tbtn';customBtn.textContent='직접 입력';
   customBtn.style.cssText='font-size:12px;padding:7px 14px;border-color:#f59e0b;color:#f59e0b;';
   customBtn.onclick=()=>showCustomForm();
@@ -5179,10 +5184,12 @@ function openPcPayment(mbId,parentBox,parentClose){
       if(!gcList.length){
         const emp=grid.appendChild(document.createElement('div'));emp.style.cssText='grid-column:1/-1;text-align:center;padding:48px 0;color:#2a2d45;font-size:13px;line-height:1.8;';
         emp.innerHTML='등록된 그룹수업이 없습니다';
-        const newBtn0=grid.appendChild(document.createElement('button'));
-        newBtn0.type='button';newBtn0.textContent='+ 새 그룹수업 만들기';
-        newBtn0.style.cssText='grid-column:1/-1;margin:0 auto;padding:10px 18px;border-radius:9px;border:1px solid #818cf8;background:transparent;color:#818cf8;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;';
-        newBtn0.onclick=()=>{openGrpClassModal(null,(newGc)=>{selGroupClassId=newGc.id;renderGrid();updateRight();});};
+        if(isAdminUser()){
+          const newBtn0=grid.appendChild(document.createElement('button'));
+          newBtn0.type='button';newBtn0.textContent='+ 새 그룹수업 만들기';
+          newBtn0.style.cssText='grid-column:1/-1;margin:0 auto;padding:10px 18px;border-radius:9px;border:1px solid #818cf8;background:transparent;color:#818cf8;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;';
+          newBtn0.onclick=()=>{openGrpClassModal(null,(newGc)=>{selGroupClassId=newGc.id;renderGrid();updateRight();});};
+        }
         return;
       }
       const DAY_KSL=['일','월','화','수','목','금','토'];
@@ -5196,10 +5203,12 @@ function openPcPayment(mbId,parentBox,parentClose){
         const tbdg=hdr.appendChild(document.createElement('div'));
         tbdg.style.cssText='display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;background:rgba(251,191,36,.15);color:#fbbf24;';
         tbdg.textContent='그룹수업';
-        const editBtn=hdr.appendChild(document.createElement('button'));editBtn.type='button';editBtn.textContent='수정';
-        editBtn.style.cssText='padding:3px 10px;border-radius:6px;border:1px solid #3a3f58;background:transparent;color:#a5b4fc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;';
-        editBtn.onmouseenter=()=>editBtn.style.borderColor='#818cf8';editBtn.onmouseleave=()=>editBtn.style.borderColor='#3a3f58';
-        editBtn.onclick=(e)=>{e.stopPropagation();openGrpClassModal(gc,()=>{if(!groupClasses.some(g=>g.id===selGroupClassId))selGroupClassId=null;renderGrid();updateRight();});};
+        if(isAdminUser()){
+          const editBtn=hdr.appendChild(document.createElement('button'));editBtn.type='button';editBtn.textContent='수정';
+          editBtn.style.cssText='padding:3px 10px;border-radius:6px;border:1px solid #3a3f58;background:transparent;color:#a5b4fc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;';
+          editBtn.onmouseenter=()=>editBtn.style.borderColor='#818cf8';editBtn.onmouseleave=()=>editBtn.style.borderColor='#3a3f58';
+          editBtn.onclick=(e)=>{e.stopPropagation();openGrpClassModal(gc,()=>{if(!groupClasses.some(g=>g.id===selGroupClassId))selGroupClassId=null;renderGrid();updateRight();});};
+        }
         card.appendChild(Object.assign(document.createElement('div'),{textContent:gc.name})).style.cssText='font-size:15px;font-weight:800;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
         const daysStr=(gc.days||[]).sort((a,b)=>a-b).map(d=>DAY_KSL[d]).join('/');
         card.appendChild(Object.assign(document.createElement('div'),{textContent:gc.time+' · '+daysStr+(gc.duration?' ('+gc.duration+'분)':'')})).style.cssText='font-size:11px;color:#6b7494;';
@@ -5209,12 +5218,14 @@ function openPcPayment(mbId,parentBox,parentClose){
         if(trName)card.appendChild(Object.assign(document.createElement('div'),{textContent:'담당: '+trName})).style.cssText='font-size:11px;color:#3a3f58;';
         card.onclick=()=>{selGroupClassId=isSel?null:gc.id;selProductId=null;customProd=null;renderGrid();updateRight();};
       });
-      const newCard=grid.appendChild(document.createElement('div'));
-      newCard.style.cssText='background:transparent;border:2px dashed #2a2d3a;border-radius:12px;padding:'+(isMob?'12px':'16px')+';cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;min-height:80px;color:#818cf8;font-size:13px;font-weight:600;';
-      newCard.textContent='+ 새 그룹수업 만들기';
-      newCard.onmouseenter=()=>{newCard.style.borderColor='#818cf8';};
-      newCard.onmouseleave=()=>{newCard.style.borderColor='#2a2d3a';};
-      newCard.onclick=()=>{openGrpClassModal(null,(newGc)=>{selGroupClassId=newGc.id;renderGrid();updateRight();});};
+      if(isAdminUser()){
+        const newCard=grid.appendChild(document.createElement('div'));
+        newCard.style.cssText='background:transparent;border:2px dashed #2a2d3a;border-radius:12px;padding:'+(isMob?'12px':'16px')+';cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;min-height:80px;color:#818cf8;font-size:13px;font-weight:600;';
+        newCard.textContent='+ 새 그룹수업 만들기';
+        newCard.onmouseenter=()=>{newCard.style.borderColor='#818cf8';};
+        newCard.onmouseleave=()=>{newCard.style.borderColor='#2a2d3a';};
+        newCard.onclick=()=>{openGrpClassModal(null,(newGc)=>{selGroupClassId=newGc.id;renderGrid();updateRight();});};
+      }
       return;
     }
     // ── 개인레슨: products 표시 ──
@@ -5234,10 +5245,12 @@ function openPcPayment(mbId,parentBox,parentClose){
       const tbdg=hdr.appendChild(document.createElement('div'));
       tbdg.style.cssText='display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;background:'+_pInfo.bg+';color:'+_pInfo.c+';white-space:nowrap;';
       tbdg.textContent=_pInfo.l;
-      const editBtn=hdr.appendChild(document.createElement('button'));editBtn.type='button';editBtn.textContent='수정';
-      editBtn.style.cssText='padding:3px 10px;border-radius:6px;border:1px solid #3a3f58;background:transparent;color:#a5b4fc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;';
-      editBtn.onmouseenter=()=>editBtn.style.borderColor='#818cf8';editBtn.onmouseleave=()=>editBtn.style.borderColor='#3a3f58';
-      editBtn.onclick=(e)=>{e.stopPropagation();openPcEditProduct(p.id,()=>{if(!products.some(x=>x.id===selProductId))selProductId=null;renderGrid();updateRight();});};
+      if(isAdminUser()){
+        const editBtn=hdr.appendChild(document.createElement('button'));editBtn.type='button';editBtn.textContent='수정';
+        editBtn.style.cssText='padding:3px 10px;border-radius:6px;border:1px solid #3a3f58;background:transparent;color:#a5b4fc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;';
+        editBtn.onmouseenter=()=>editBtn.style.borderColor='#818cf8';editBtn.onmouseleave=()=>editBtn.style.borderColor='#3a3f58';
+        editBtn.onclick=(e)=>{e.stopPropagation();openPcEditProduct(p.id,()=>{if(!products.some(x=>x.id===selProductId))selProductId=null;renderGrid();updateRight();});};
+      }
       card.appendChild(Object.assign(document.createElement('div'),{textContent:p.name})).style.cssText='font-size:15px;font-weight:800;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
       const priceRow=card.appendChild(document.createElement('div'));priceRow.style.cssText='display:flex;align-items:baseline;gap:6px;';
       if(p.duration)priceRow.appendChild(Object.assign(document.createElement('div'),{textContent:p.duration+'분'})).style.cssText='font-size:13px;color:#6b7494;white-space:nowrap;';
@@ -5839,11 +5852,11 @@ function renderPcBookings(ct,acts){
 function renderPcSettings(ct,acts){
   const _adm=isAdminUser();
   // 직원관리(강사료 포함)는 관리자만 — 강사끼리 서로 페이 못 봄
-  if(!pcSV)pcSV=_adm?'staff':'pkg';
-  if(pcSV==='staff'&&!_adm)pcSV='pkg';
+  if(!pcSV)pcSV=_adm?'staff':'avail';
+  if((pcSV==='staff'||pcSV==='pkg')&&!_adm)pcSV='avail';
   const stbar2=document.getElementById('pc-subtabbar');
   if(stbar2){stbar2.innerHTML='';stbar2.style.display='flex';stbar2.style.padding='0 24px';
-    [{id:'staff',label:'직원관리',adminOnly:true},{id:'pkg',label:'상품관리'},{id:'avail',label:'예약설정'}].filter(s=>!s.adminOnly||_adm).forEach(s=>{const tab=stbar2.appendChild(Object.assign(document.createElement('div'),{className:'pc-stab'+(pcSV===s.id?' on':''),textContent:s.label}));tab.onclick=()=>{pcSV=s.id;initPcNav();renderPcContent();};});
+    [{id:'staff',label:'직원관리',adminOnly:true},{id:'pkg',label:'상품관리',adminOnly:true},{id:'avail',label:'예약설정'}].filter(s=>!s.adminOnly||_adm).forEach(s=>{const tab=stbar2.appendChild(Object.assign(document.createElement('div'),{className:'pc-stab'+(pcSV===s.id?' on':''),textContent:s.label}));tab.onclick=()=>{pcSV=s.id;initPcNav();renderPcContent();};});
   }
   if(pcSV==='avail'){
     renderAdmAvail(ct);
@@ -6672,7 +6685,7 @@ function openPcEditStaff(trId) { const tr2 = trainers.find(t => t.id === trId); 
 function openPcLogin() {
   if (curUser) {
     if (confirm('로그아웃 하시겠습니까?')) {
-      curUser = null; sv('jbog10_cu', null); const _pn=document.getElementById('pc-nav');if(_pn){_pn._built=false;_pn.innerHTML='';} updatePcUser(); initPcNav(); renderPcContent();
+      curUser = null; sv('jbog10_cu', null); const _pn=document.getElementById('pc-nav');if(_pn){_pn._built=false;_pn.innerHTML='';} pcV='home';pcSV=''; updatePcUser(); initPcNav(); renderPcContent();
     }
     return;
   }
@@ -6693,7 +6706,7 @@ function openPcLogin() {
       const tr2 = trainers.find(t => t.id === trS.value);
       if (!tr2) {errDiv.textContent = '담당자를 선택해주세요.'; return;}
       if (tr2.saban && pinI.value !== tr2.saban) {errDiv.textContent = '로그인 번호가 올바르지 않습니다.'; pinI.value=''; return;}
-      curUser = tr2.id; sv('jbog10_cu', curUser); const _pn2=document.getElementById('pc-nav');if(_pn2){_pn2._built=false;_pn2.innerHTML='';} close(); updatePcUser(); initPcNav(); renderPcContent();
+      curUser = tr2.id; sv('jbog10_cu', curUser); const _pn2=document.getElementById('pc-nav');if(_pn2){_pn2._built=false;_pn2.innerHTML='';} pcV='home';pcSV=''; close(); updatePcUser(); initPcNav(); renderPcContent();
     }
     const btns = box.appendChild(document.createElement('div')); btns.className = 'pcm-btns'; btns.style.marginTop = '20px';
     btns.appendChild(Object.assign(document.createElement('button'), {className:'pcm-btn-sec', textContent:'취소'})).onclick = close;
@@ -6986,18 +6999,21 @@ function renderPcGroupClass(ct){
     loadGrpData().then(()=>loadGrpSessRange([first,last]).then(()=>renderPcContent()));
     return;
   }
-  // pcSV와 grpV 동기화
+  // pcSV와 grpV 동기화 (수업 설정은 관리자만)
+  const _grpAdm=isAdminUser();
   if(pcSV&&['month','config','members'].includes(pcSV))grpV=pcSV;
   else if(!['month','config','members'].includes(grpV))grpV='month';
+  if(grpV==='config'&&!_grpAdm)grpV='month';
   // subtabbar에 pc-stab 스타일 탭 렌더
   const stbar=document.getElementById('pc-subtabbar');
   if(stbar){
     stbar.innerHTML='';stbar.style.display='flex';stbar.style.padding='0 24px';
-    [['month','월간 현황'],['config','수업 설정'],['members','회원 현황']].forEach(([v,l])=>{
+    [['month','월간 현황'],['config','수업 설정'],['members','회원 현황']].filter(([v])=>v!=='config'||_grpAdm).forEach(([v,l])=>{
       const tab=stbar.appendChild(Object.assign(document.createElement('div'),{className:'pc-stab'+(grpV===v?' on':''),textContent:l}));
       tab.onclick=()=>{grpV=v;pcSV=v;initPcNav();renderPcContent();};
     });
   }
+  if(grpV==='config'&&!_grpAdm){ct.appendChild(Object.assign(document.createElement('div'),{className:'sal-empty',textContent:'관리자만 접근할 수 있습니다.'}));return;}
   if(grpV==='month')_renderGrpMonth(ct);else if(grpV==='config')_renderGrpConfig(ct);else _renderGrpMembers(ct);
 }
 
@@ -7588,7 +7604,8 @@ function openGrpClassModal(gc,onSaved){
     const ppInfo=box.appendChild(document.createElement('div'));ppInfo.style.cssText='font-size:11px;color:#6b7494;margin:-4px 0 6px;';
     function updatePpInfo(){const n=parseInt(msI.value)||0,p=parseInt(mpI.value)||0;ppInfo.textContent=(n>0&&p>0)?('→ 회당 '+Math.round(p/n).toLocaleString()+'원 · 결석 1회당 차감'):'';}
     msI.oninput=updatePpInfo;mpI.oninput=updatePpInfo;updatePpInfo();
-    const payF=box.appendChild(_f('강사 회당 페이 (원)'));const payI=payF.appendChild(_inp('예) 15000 · 진행 1회당 강사 지급액'));payI.type='number';payI.min='0';payI.style.width='100%';payI.value=gc?.trainerPay||'';
+    let payI=null;
+    if(isAdminUser()){const payF=box.appendChild(_f('강사 회당 페이 (원)'));payI=payF.appendChild(_inp('예) 15000 · 진행 1회당 강사 지급액'));payI.type='number';payI.min='0';payI.style.width='100%';payI.value=gc?.trainerPay||'';}
     const timeF=box.appendChild(_f('시작 시간'));
     const timeW=timeF.appendChild(document.createElement('div'));timeW.style.cssText='display:flex;gap:8px;';
     const _initT=(gc?.time||'09:00').split(':');
@@ -7628,7 +7645,7 @@ function openGrpClassModal(gc,onSaved){
       if(ms<1){err.textContent='월 수업 횟수를 입력해주세요.';return;}
       if(!mp){err.textContent='월 금액을 입력해주세요.';return;}
       const pps=Math.round(mp/ms);
-      const obj={name,trainerId:trS.value||null,capacity:cap,monthlySessions:ms,monthlyPrice:mp,pricePerSession:pps,trainerPay:parseInt(payI.value)||0,time:timeI.value,duration:parseInt(durI.value)||50,days,active:true,createdAt:gc?.createdAt||Date.now()};
+      const obj={name,trainerId:trS.value||null,capacity:cap,monthlySessions:ms,monthlyPrice:mp,pricePerSession:pps,trainerPay:(payI?(parseInt(payI.value)||0):(gc?.trainerPay||0)),time:timeI.value,duration:parseInt(durI.value)||50,days,active:true,createdAt:gc?.createdAt||Date.now()};
       if(gc?.trainerHistory)obj.trainerHistory=gc.trainerHistory; // 날짜기점 담당변경 이력 보존
       if(gc?.id)obj.id=gc.id;
       await svGrpClass(obj);close();
