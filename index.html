@@ -4998,13 +4998,14 @@ function renderMbDetailModal(box,close,mbId){
 function renderMbTab(ct,mb,tab,box,close){
   ct.innerHTML='';
   if(tab==='dashboard'){
-    // 유효 상품 / 만료 상품
+    // 진행 중(유효)만 노출, 지난·해지·만료는 드롭다운으로 숨김
     const plans=mb.plans||[];
-    const active=plans.filter(isPlanActive);const expired=plans.filter(p=>!isPlanActive(p));
+    const isActiveDisp=(p)=>!p.refunded&&isPlanActive(p);
+    const active=plans.filter(isActiveDisp);const inactive=plans.filter(p=>!isActiveDisp(p));
     // 헤더 카운트
     const hdr=ct.appendChild(document.createElement('div'));
     hdr.style.cssText='display:flex;align-items:center;gap:16px;margin-bottom:20px;';
-    hdr.innerHTML='<span style="font-size:14px;font-weight:700;color:#e2e8f0;">유효 상품 <span style="color:#818cf8;">'+active.length+'</span></span><span style="font-size:14px;color:#4a5068;">만료 상품 '+expired.length+'</span>';
+    hdr.innerHTML='<span style="font-size:14px;font-weight:700;color:#e2e8f0;">진행 중 <span style="color:#818cf8;">'+active.length+'</span></span><span style="font-size:14px;color:#4a5068;">지난·해지 '+inactive.length+'</span>';
 
     // 이용권 카드들
     if(!plans.length){
@@ -5012,7 +5013,38 @@ function renderMbTab(ct,mb,tab,box,close){
       emp.style.cssText='background:#0f1117;border:1px dashed #1e2026;border-radius:10px;padding:32px;text-align:center;color:#2a2d45;font-size:13px;margin-bottom:12px;';
       emp.textContent='이용권(0)';
     }
-    plans.forEach(p=>renderMbPlanCard(ct,mb,p,box,close));;
+    // 진행 중 상품
+    active.forEach(p=>renderMbPlanCard(ct,mb,p,box,close));
+    if(plans.length&&!active.length){
+      const none=ct.appendChild(document.createElement('div'));none.style.cssText='font-size:12px;color:#3a3f58;padding:6px 2px 10px;';none.textContent='진행 중인 상품이 없습니다.';
+    }
+    // 지난·해지·만료 내역 (드롭다운, 각 카드에 이력 삭제)
+    if(inactive.length){
+      const dd=ct.appendChild(document.createElement('div'));dd.style.cssText='margin:6px 0 4px;';
+      const toggle=dd.appendChild(document.createElement('button'));
+      toggle.style.cssText='width:100%;display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-radius:10px;border:1px solid #1e2026;background:#0f1117;color:#8b93a7;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;';
+      const bodyEl=dd.appendChild(document.createElement('div'));bodyEl.style.cssText='margin-top:10px;display:none;';
+      let ddOpen=false;
+      const upDd=()=>{toggle.innerHTML='<span>지난 · 해지 · 만료 내역 <span style="color:#f87171;">'+inactive.length+'</span></span><span style="font-size:11px;color:#6b7494;font-weight:600;">'+(ddOpen?'▲ 접기':'▼ 펼치기')+'</span>';bodyEl.style.display=ddOpen?'block':'none';};
+      toggle.onclick=()=>{ddOpen=!ddOpen;upDd();};
+      upDd();
+      inactive.forEach(p=>{
+        renderMbPlanCard(bodyEl,mb,p,box,close);
+        const card=bodyEl.lastElementChild;
+        if(card){
+          card.style.opacity='0.82';
+          const delRow=card.appendChild(document.createElement('div'));delRow.style.cssText='display:flex;justify-content:flex-end;margin-top:10px;';
+          const delBtn=delRow.appendChild(Object.assign(document.createElement('button'),{textContent:'이력 삭제'}));
+          delBtn.style.cssText='padding:5px 12px;border-radius:6px;border:1px solid rgba(248,113,113,.45);background:transparent;color:#f87171;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;';
+          delBtn.onclick=()=>{
+            if(!confirm('이 내역을 삭제할까요?\n('+(p.productName||'상품')+' · 되돌릴 수 없음)'))return;
+            mb.plans=(mb.plans||[]).filter(x=>x!==p);
+            if(p.id){grpBillings=grpBillings.filter(b=>!(b.planId===p.id&&!b.paid));ptBillings=ptBillings.filter(b=>!(b.planId===p.id&&!b.paid));sv('jbog10_gbl',grpBillings);sv('jbog10_ptbl',ptBillings);}
+            sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);
+          };
+        }
+      });
+    }
 
     // 이용권 추가 버튼
     ct.appendChild(Object.assign(document.createElement('button'),{className:'pcdp-add-btn',textContent:'+ 이용권 추가하기'})).onclick=()=>openPcPayment(mb.id,box,close);
