@@ -1242,7 +1242,18 @@ function getWeekNum(d){const f=new Date(d.getFullYear(),d.getMonth(),1);return M
 function fmtWeek(wd){const a=wd[0],b=wd[6];return{m:'[ '+(a.getMonth()+1)+'월 '+getWeekNum(a)+'주차 ]',s:(a.getMonth()+1)+'월 '+a.getDate()+'일 ~ '+(b.getMonth()+1)+'월 '+b.getDate()+'일'};}
 
 function getPlanUsed(planId){return slots.filter(s=>s.planId===planId&&s.type!=='OT').length;}
-function getPlanRemain(plan){if(plan&&(plan.productType==='membership'||plan.billingMode==='postpaid'))return 0;return(plan.sessions||0)-getPlanUsed(plan.id);}
+// 그룹수업에서 특정 회원이 특정 반에 출석(attended) 표시된 총 횟수 (startDate 이후) — 그룹 회차권 소진 계산
+function getGrpAttendedCount(memberId,classId,sinceDate){
+  let cnt=0;
+  Object.keys(grpSessMap).forEach(k=>{if(!k.startsWith(classId+'_'))return;const s=grpSessMap[k];if(!s||s.status==='cancelled')return;const ds=k.slice(classId.length+1);if(sinceDate&&ds<sinceDate)return;if((s.attended||[]).some(a=>a.memberId===memberId))cnt++;});
+  return cnt;
+}
+// 플랜 사용 횟수(회차권): 개인레슨=슬롯, 그룹 회차권=출석 소진
+function planUsedCount(plan){
+  if(plan&&plan.productType==='group'&&plan.prepaid){const mb=members.find(m=>(m.plans||[]).some(p=>p&&p.id===plan.id));return mb?getGrpAttendedCount(mb.id,plan.groupClassId,plan.startDate):0;}
+  return getPlanUsed(plan.id);
+}
+function getPlanRemain(plan){if(plan&&(plan.productType==='membership'||plan.billingMode==='postpaid'))return 0;return(plan.sessions||0)-planUsedCount(plan);}
 function planDaysLeft(plan){if(!plan||!plan.endDate)return null;return Math.ceil((new Date(plan.endDate)-new Date())/(1000*60*60*24));}
 function planRemLbl(plan){if(plan&&plan.billingMode==='postpaid')return '회당 '+(plan.pricePerSession||0).toLocaleString()+'원';if(plan&&plan.productType==='membership'){const dl=planDaysLeft(plan);return dl==null?'기간제':(dl>=0?('D-'+dl):'만료');}return '잔여 '+getPlanRemain(plan)+'회';}
 function planRemWarn(plan){if(plan&&plan.billingMode==='postpaid')return false;if(plan&&plan.productType==='membership'){const dl=planDaysLeft(plan);return dl!=null&&dl>=0&&dl<=14;}const r=getPlanRemain(plan);return r>=0&&r<=2;}
@@ -5295,6 +5306,50 @@ function renderPcCust(ct,acts){
   if(!list.length){const tr3=tbody.appendChild(document.createElement('tr'));const td=document.createElement('td');td.colSpan=11;td.style.cssText='text-align:center;padding:40px;color:#2a2d45;';td.textContent='회원이 없습니다.';tr3.appendChild(td);}
 }
 
+// ── 선불 회차권 판매 (개인레슨 / 그룹수업) ────────────────────────────────
+// 등록 즉시 매출 + 잔여 N회. 개인레슨=슬롯 소진, 그룹=출석 소진. 결석/미체크는 소진 안 함(자연 이월)
+function openPcSellPass(mbId,onDone){
+  const mb=members.find(m=>m.id===mbId);if(!mb)return;
+  pcModal((box,close)=>{
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'선불 회차권 판매'}));
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub',textContent:mb.name+' · 등록 즉시 매출로 잡히고, 출석마다 1회씩 차감됩니다'}));
+    // 종류
+    let kind='pt';let pm='카드';
+    const kF=box.appendChild(_f('종류',true));const kRow=kF.appendChild(document.createElement('div'));kRow.style.cssText='display:flex;gap:8px;';
+    const kBtns=[];
+    [{v:'pt',l:'개인레슨'},{v:'group',l:'그룹수업'}].forEach(o=>{const b=kRow.appendChild(document.createElement('button'));b.type='button';b.textContent=o.l;b.style.cssText='flex:1;padding:9px;border-radius:8px;border:1.5px solid #1e2026;background:#0f1117;color:#6b7494;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;';b.onclick=()=>{kind=o.v;kBtns.forEach(({b:b2,v})=>{const on=kind===v;b2.style.borderColor=on?'#818cf8':'#1e2026';b2.style.background=on?'rgba(129,140,248,.1)':'#0f1117';b2.style.color=on?'#818cf8':'#6b7494';});gcRow.style.display=kind==='group'?'block':'none';nameRow.style.display=kind==='pt'?'block':'none';};kBtns.push({b,v:o.v});});
+    kBtns[0].b.style.borderColor='#818cf8';kBtns[0].b.style.background='rgba(129,140,248,.1)';kBtns[0].b.style.color='#818cf8';
+    // 개인레슨 상품명
+    const nameRow=box.appendChild(_f('상품명 (개인레슨)'));const nameI=nameRow.appendChild(_inp('예) 60분 개인레슨 20회권'));nameI.value='개인레슨 회차권';
+    // 그룹수업 선택
+    const gcRow=box.appendChild(_f('그룹수업 반'));const gcSel=gcRow.appendChild(_sel(groupClasses.filter(g=>g.active!==false).map(g=>({v:g.id,l:g.name}))));gcSel.style.width='100%';gcRow.style.display='none';
+    // 횟수 + 총금액
+    const r2=box.appendChild(document.createElement('div'));r2.className='pcm-row2';
+    const sessF=r2.appendChild(_f('횟수',true));const sessI=sessF.appendChild(_inp('예) 20'));sessI.type='number';sessI.min='1';sessI.value='20';
+    const priceF=r2.appendChild(_f('총 금액 (원)',true));const priceI=priceF.appendChild(_inp('예) 2,000,000'));priceI.oninput=function(){this.value=fmtMoney(this.value);upPer();};
+    sessI.oninput=upPer;
+    const perInfo=box.appendChild(document.createElement('div'));perInfo.style.cssText='font-size:11px;color:#6b7494;margin:-4px 0 6px;';
+    function upPer(){const n=parseInt(sessI.value)||0,p=parseMoney(priceI.value)||0;perInfo.textContent=(n>0&&p>0)?('→ 회당 '+Math.round(p/n).toLocaleString()+'원'):'';}
+    // 결제수단
+    const pF=box.appendChild(_f('결제 수단',true));const pRow=pF.appendChild(document.createElement('div'));pRow.style.cssText='display:flex;gap:8px;';const pBtns=[];
+    ['카드','현금','계좌이체'].forEach(m=>{const b=pRow.appendChild(document.createElement('button'));b.type='button';b.textContent=m;b.style.cssText='flex:1;padding:9px;border-radius:8px;border:1.5px solid '+(pm===m?'#818cf8':'#1e2026')+';background:'+(pm===m?'rgba(129,140,248,.1)':'#0f1117')+';color:'+(pm===m?'#818cf8':'#6b7494')+';font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;';b.onclick=()=>{pm=m;pBtns.forEach(({b:b2,m:m2})=>{const on=pm===m2;b2.style.borderColor=on?'#818cf8':'#1e2026';b2.style.background=on?'rgba(129,140,248,.1)':'#0f1117';b2.style.color=on?'#818cf8':'#6b7494';});};pBtns.push({b,m});});
+    const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='18px';
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'판매 등록'})).onclick=()=>{
+      const N=parseInt(sessI.value)||0;const P=parseMoney(priceI.value)||0;
+      if(!N||!P){alert('횟수와 총 금액을 입력해주세요.');return;}
+      const now=new Date();const todayStr=_grpFmtD(now);
+      const plan={id:'pl'+Date.now(),productType:kind,prepaid:true,sessions:N,totalPrice:P,pricePerSession:Math.round(P/N),
+        paymentMethod:pm,paymentDate:todayStr,startDate:todayStr,addedAt:now.getTime(),status:'active'};
+      if(kind==='group'){const gc=groupClasses.find(g=>g.id===gcSel.value);if(!gc){alert('그룹수업 반을 선택해주세요.');return;}plan.groupClassId=gc.id;plan.productName=gc.name+' '+N+'회권';}
+      else{plan.productName=(nameI.value.trim()||'개인레슨')+' '+N+'회권';plan.duration=60;}
+      mb.plans=mb.plans||[];mb.plans.push(plan);sv('jbog10_mb',members);
+      alert('✅ 선불 회차권 판매 완료!\n'+plan.productName+' · '+P.toLocaleString()+'원 ('+pm+')\n잔여 '+N+'회');
+      close();if(onDone)onDone();
+    };
+    upPer();
+  });
+}
 // ── 회원 상세 모달 (Image 3 참고) ────────────────────────────────────────
 function openPcMemberDetail(mbId){
   const close=pcModal((box,c)=>{
@@ -5440,7 +5495,9 @@ function renderMbTab(ct,mb,tab,box,close){
     }
 
     // 이용권 추가 버튼
-    ct.appendChild(Object.assign(document.createElement('button'),{className:'pcdp-add-btn',textContent:'+ 이용권 추가하기'})).onclick=()=>openPcPayment(mb.id,box,close);
+    const addRow2=ct.appendChild(document.createElement('div'));addRow2.style.cssText='display:flex;gap:8px;';
+    const addB1=addRow2.appendChild(Object.assign(document.createElement('button'),{className:'pcdp-add-btn',textContent:'+ 이용권 추가하기 (후불)'}));addB1.style.flex='1';addB1.onclick=()=>openPcPayment(mb.id,box,close);
+    const addB2=addRow2.appendChild(Object.assign(document.createElement('button'),{className:'pcdp-add-btn',textContent:'+ 선불 회차권'}));addB2.style.cssText='flex:1;border-color:#3dc87a;color:#3dc87a;';addB2.onclick=()=>openPcSellPass(mb.id,()=>renderMbDetailModal(box,close,mb.id));
 
     // 결제 내역 통계
     const sec2=ct.appendChild(document.createElement('div'));sec2.style.marginTop='20px';
@@ -6654,6 +6711,22 @@ function openPcEditConsult(cid,cb){
 
 // 회원 상세 이용권 카드에 환불/양도 버튼 추가
 function renderMbPlanCard(container, mb, p, box, close) {
+  // 그룹수업 회차권(선불) 카드
+  if(p.productType==='group'&&p.prepaid){
+    const gc=groupClasses.find(g=>g.id===p.groupClassId);
+    const rem=getPlanRemain(p);const used=planUsedCount(p);
+    const card=container.appendChild(document.createElement('div'));
+    card.style.cssText='background:#0f1117;border:1px solid '+(rem>0?'#0f2a1a':'#2a1a1a')+';border-radius:10px;padding:14px 16px;margin-bottom:8px;';
+    const top=card.appendChild(document.createElement('div'));top.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;';
+    top.appendChild(Object.assign(document.createElement('div'),{textContent:p.productName||(gc?gc.name:'그룹수업')})).style.cssText='font-size:13px;font-weight:700;color:#e2e8f0;flex:1;';
+    top.appendChild(Object.assign(document.createElement('span'),{textContent:'그룹 회차권'})).style.cssText='padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;background:rgba(61,200,122,.15);color:#3dc87a;';
+    const stBdg=top.appendChild(document.createElement('span'));stBdg.className='pbs '+(rem>0?'pbs-on':'pbs-off');stBdg.textContent=rem>0?'유효':'소진';
+    const info=card.appendChild(document.createElement('div'));info.style.cssText='font-size:11px;color:#4a5068;line-height:1.9;';
+    info.innerHTML=(gc?'<span style="color:#fbbf24;">'+gc.name+'</span><br>':'')
+      +'선결제 '+(p.totalPrice||0).toLocaleString()+'원 · 회당 '+(p.pricePerSession||0).toLocaleString()+'원 ('+(p.paymentMethod||'-')+' · '+(p.paymentDate||'')+')<br>'
+      +'잔여 <strong style="color:'+(rem>0?'#3dc87a':'#f87171')+';">'+rem+'/'+(p.sessions||0)+'회</strong> (사용 '+used+'회)';
+    return;
+  }
   // 그룹수업 월정액은 별도 카드
   if(p.productType==='group'){
     const gc=groupClasses.find(g=>g.id===p.groupClassId);
@@ -7156,6 +7229,7 @@ function getGrpMemberMonthUsed(memberId,groupClassId,month){
 function grpPlanActiveOn(plan,dateStr){
   if(!plan||plan.refunded)return false;
   if(plan.startDate&&dateStr<plan.startDate)return false;
+  if(plan.prepaid)return true; // 회차권: 시작일부터 잔여 소진까지 로스터 표시(잔여 0이면 경고로 처리)
   if(plan.status==='cancelled'){if(!plan.cancelledDate)return false;return dateStr<plan.cancelledDate;}
   return true;
 }
@@ -7235,7 +7309,7 @@ function openGrpCancelModal(mb,plan,onDone){
 function ensureGrpBillings(){
   const today=new Date();const curMonth=_grpFmtD(today).slice(0,7);
   members.forEach(mb=>{
-    (mb.plans||[]).filter(p=>p.productType==='group'&&!p.refunded).forEach(plan=>{
+    (mb.plans||[]).filter(p=>p.productType==='group'&&!p.refunded&&!p.prepaid).forEach(plan=>{
       const gc=groupClasses.find(g=>g.id===plan.groupClassId);if(!gc)return;
       const startMonth=plan.startDate?plan.startDate.slice(0,7):'';if(!startMonth)return;
       // 해지된 플랜: 해지일이 속한 달까지만 청구(그 이후 달은 생성 안 함). 해지일 없는 완전해지는 청구 중단
@@ -8251,6 +8325,7 @@ function openGrpSessionModal(gc,date,sess,prefill){
           const isAbsent=!!absEntry;const isMakeup=isAbsent&&!!absEntry.makeup;
           const isAtt=attListR.some(a=>a.memberId===mb.id);
           const mPlan=(mb.plans||[]).find(p=>p.productType==='group'&&p.groupClassId===gc.id&&grpPlanActiveOn(p,date));
+          const isPre=!!(mPlan&&mPlan.prepaid);const preRem=isPre?getPlanRemain(mPlan):0;
           const sched=mPlan?getGrpMemberScheduled(mPlan,gc,month):0;
           const absN=mPlan?getGrpMemberAbsences(mb.id,gc,month,mPlan):0;
           const dedN=mPlan?getGrpMemberAbsences(mb.id,gc,month,mPlan,true):0;const mkN=absN-dedN;
@@ -8270,10 +8345,12 @@ function openGrpSessionModal(gc,date,sess,prefill){
           const nameDiv=item.appendChild(document.createElement('div'));nameDiv.style.cssText='flex:1;min-width:0;';
           const nmRow=nameDiv.appendChild(document.createElement('div'));nmRow.style.cssText='font-size:13px;font-weight:700;color:#e2e8f0;';nmRow.textContent=mb.name;
           if(mPlan&&mPlan.cancelledDate){const ct=nmRow.appendChild(document.createElement('span'));ct.textContent=' · 해지예정 '+mPlan.cancelledDate.slice(5);ct.style.cssText='font-size:10px;color:#f87171;font-weight:600;';}
-          if(owed>0){const ow=nmRow.appendChild(document.createElement('span'));ow.textContent=' · 보강 '+owed+'회 필요';ow.style.cssText='font-size:10px;color:#60a5fa;font-weight:700;';}
-          nameDiv.appendChild(Object.assign(document.createElement('div'),{textContent:'이번달 출석 '+attCntM+'회'+(dedN?' · 결석 '+dedN:'')+(mkN?' · 보강 '+mkN:'')})).style.cssText='font-size:11px;color:'+(dedN?'#f87171':(mkN?'#60a5fa':'#4a5068'))+';margin-top:1px;';
-          // 보강 버튼 (결석일 때만): 이 결석을 보강(이월, 차감안함)으로/일반결석(차감)으로 전환
-          if(isAbsent){
+          if(isPre){const ow=nmRow.appendChild(document.createElement('span'));ow.textContent=' · 회차권 잔여 '+preRem+'/'+(mPlan.sessions||0)+'회';ow.style.cssText='font-size:10px;color:'+(preRem>0?'#3dc87a':'#f87171')+';font-weight:700;';}
+          else if(owed>0){const ow=nmRow.appendChild(document.createElement('span'));ow.textContent=' · 보강 '+owed+'회 필요';ow.style.cssText='font-size:10px;color:#60a5fa;font-weight:700;';}
+          if(isPre){nameDiv.appendChild(Object.assign(document.createElement('div'),{textContent:'출석 체크 시 1회 차감 · 결석/미체크는 차감 안 함(이월)'+(preRem<=0?' · ⚠ 잔여 소진':'')})).style.cssText='font-size:11px;color:'+(preRem<=0?'#f87171':'#4a5068')+';margin-top:1px;';}
+          else nameDiv.appendChild(Object.assign(document.createElement('div'),{textContent:'이번달 출석 '+attCntM+'회'+(dedN?' · 결석 '+dedN:'')+(mkN?' · 보강 '+mkN:'')})).style.cssText='font-size:11px;color:'+(dedN?'#f87171':(mkN?'#60a5fa':'#4a5068'))+';margin-top:1px;';
+          // 보강 버튼 (월정액 결석일 때만): 이 결석을 보강(이월,차감안함)/일반결석(차감)으로 전환. 회차권은 결석=자연 이월이라 불필요
+          if(isAbsent&&!isPre){
             const mkBtn=item.appendChild(document.createElement('button'));mkBtn.textContent=isMakeup?'보강✓':'보강';
             mkBtn.style.cssText='font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid '+(isMakeup?'#60a5fa':'#2a3050')+';background:'+(isMakeup?'rgba(96,165,250,.15)':'transparent')+';color:'+(isMakeup?'#60a5fa':'#6b7494')+';cursor:pointer;white-space:nowrap;flex-shrink:0;';
             mkBtn.title=isMakeup?'보강(이월) 처리됨 — 눌러서 일반 결석(차감)으로':'이 결석을 보강(이월)으로 처리 — 청구 차감 안 하고 보강 1회 적립';
