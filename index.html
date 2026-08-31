@@ -8164,6 +8164,21 @@ function openGrpSessionModal(gc,date,sess,prefill){
       const cb=botRow.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'폐강하기'}));
       cb.style.cssText='color:#f87171;border-color:#f87171;';cb.onclick=()=>_openGrpCancelModal(gc,date,close);
     }
+    // 룸에서 빼기 — 룸 배치(일정)만 제거. 폐강(출석/청구 영향)과 다름
+    const _curSess=grpSessMap[gc.id+'_'+date];
+    if(!isCancelled&&_curSess&&_curSess.roomId){
+      const rmBtn=botRow.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'룸에서 빼기'}));
+      rmBtn.style.cssText='color:#fbbf24;border-color:#fbbf24;';
+      rmBtn.onclick=async()=>{
+        if(!confirm('이 룸 배치를 취소할까요?\n수업은 유지되고 룸 현황에서만 빠집니다. (폐강 아님)'))return;
+        const s=grpSessMap[gc.id+'_'+date];if(!s){close();renderPcContent();return;}
+        s.roomId=null;s.time=null;
+        const emptyNow=!(s.reservations&&s.reservations.length)&&!(s.absentees&&s.absentees.length)&&!s.trainerId&&(s.mainPay==null)&&!s.assistantTrainerId&&(s.assistantPay==null)&&s.status!=='cancelled';
+        if(emptyNow){if(s.id&&typeof db!=='undefined'&&db){try{await db.collection('jbog10_gs').doc(s.id).delete();}catch(e){}}delete grpSessMap[gc.id+'_'+date];}
+        else{await svGrpSess(s);}
+        close();renderPcContent();
+      };
+    }
     botRow.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'닫기'})).onclick=close;
   });
 }
