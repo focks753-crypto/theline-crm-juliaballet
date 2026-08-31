@@ -5255,8 +5255,8 @@ function renderPcCust(ct,acts){
   const tw=ct.appendChild(Object.assign(document.createElement('div'),{className:'pc-tw'}));
   const tbl=tw.appendChild(Object.assign(document.createElement('table'),{className:'pc-tbl'}));
   const thead=tbl.appendChild(document.createElement('thead'));const hr=thead.appendChild(document.createElement('tr'));
-  const custHdrs=['No','상태','이름','연락처','성별','담당','유입','수업권','잔여','금액','매출일'];
-  const custSortKeys=[null,null,'name','phone','gender','trainer','inflow','plan','remain','totalPaid','payDate'];
+  const custHdrs=['No','상태','이름','연락처','성별','담당','유입','수업권','잔여','매출일'];
+  const custSortKeys=[null,null,'name','phone','gender','trainer','inflow','plan','remain','payDate'];
   custHdrs.forEach((h,hi)=>{
     const th=hr.appendChild(document.createElement('th'));
     const sk=custSortKeys[hi];
@@ -5299,8 +5299,8 @@ function renderPcCust(ct,acts){
     const totalPaid=(mb.plans||[]).reduce((s,p)=>s+(p.totalPrice||0),0);
     const regDate=mb.registeredAt?new Date(mb.registeredAt).toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'}):'-';
     const payDate=latest?(latest.paymentDate||(latest.addedAt?new Date(latest.addedAt).toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'}):regDate)):regDate;
-    [i+1,'',mb.name,mb.phone||'-',mb.gender||'-',tr2?tr2.name:'-',mb.inflow||'-',latest?(latest.productName||latest.duration+'분 '+latest.sessions+'회권'):'-',memRemLbl(mb),totalPaid?totalPaid.toLocaleString()+'원':'-',payDate].forEach((v,ci)=>{
-      const td=document.createElement('td');if(ci===9)td.style.fontWeight='700';if(ci===1)td.innerHTML='<span class="pbs '+pcSCls(st)+'">'+pcSLbl(st)+'</span>';else if(ci===10)td.innerHTML=v+'<div style="font-size:10px;color:#4a5068;margin-top:2px;">등록 '+regDate+'</div>';else td.textContent=v;if(ci===9)td.style.fontWeight='700';row.appendChild(td);
+    [i+1,'',mb.name,mb.phone||'-',mb.gender||'-',tr2?tr2.name:'-',mb.inflow||'-',latest?(latest.productName||latest.duration+'분 '+latest.sessions+'회권'):'-',memRemLbl(mb),payDate].forEach((v,ci)=>{
+      const td=document.createElement('td');if(ci===1)td.innerHTML='<span class="pbs '+pcSCls(st)+'">'+pcSLbl(st)+'</span>';else if(ci===9)td.innerHTML=v+'<div style="font-size:10px;color:#4a5068;margin-top:2px;">등록 '+regDate+'</div>';else td.textContent=v;row.appendChild(td);
     });
   });
   if(!list.length){const tr3=tbody.appendChild(document.createElement('tr'));const td=document.createElement('td');td.colSpan=11;td.style.cssText='text-align:center;padding:40px;color:#2a2d45;';td.textContent='회원이 없습니다.';tr3.appendChild(td);}
@@ -5499,12 +5499,7 @@ function renderMbTab(ct,mb,tab,box,close){
     const addB1=addRow2.appendChild(Object.assign(document.createElement('button'),{className:'pcdp-add-btn',textContent:'+ 이용권 추가하기 (후불)'}));addB1.style.flex='1';addB1.onclick=()=>openPcPayment(mb.id,box,close);
     const addB2=addRow2.appendChild(Object.assign(document.createElement('button'),{className:'pcdp-add-btn',textContent:'+ 선불 회차권'}));addB2.style.cssText='flex:1;border-color:#3dc87a;color:#3dc87a;';addB2.onclick=()=>openPcSellPass(mb.id,()=>renderMbDetailModal(box,close,mb.id));
 
-    // 결제 내역 통계
-    const sec2=ct.appendChild(document.createElement('div'));sec2.style.marginTop='20px';
-    sec2.innerHTML='<div style="font-size:11px;font-weight:700;color:#3a3f58;letter-spacing:1px;margin-bottom:12px;">결제 내역 통계</div>';
-    const totalPaid=(mb.plans||[]).reduce((s,p)=>s+(p.totalPrice||0),0);
-    if(!totalPaid){sec2.innerHTML+='<div style="font-size:12px;color:#2a2d45;">결제 내역이 없습니다</div>';}
-    else{sec2.innerHTML+='<div style="font-size:20px;font-weight:800;color:#818cf8;">'+totalPaid.toLocaleString()+'원</div><div style="font-size:11px;color:#3a3f58;margin-top:4px;">총 '+plans.length+'건 결제</div>';}
+    // (결제 내역 통계 금액은 고객관리에서 숨김 — 매출은 매출관리에서 확인)
   } else {
     // 결제 내역 탭
     const plans=mb.plans||[];
