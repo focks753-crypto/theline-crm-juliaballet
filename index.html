@@ -6672,8 +6672,10 @@ function renderMbPlanCard(container, mb, p, box, close) {
     const today=new Date();const curMonth=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0');
     const curMonthSess=gc?calcMonthSessions(gc,curMonth):0;
     const sched=gc?getGrpMemberScheduled(p,gc,curMonth):0;
-    const absN=gc?getGrpMemberAbsences(mb.id,gc,curMonth,p):0;
-    const att=Math.max(0,sched-absN);
+    const dedN=gc?getGrpMemberAbsences(mb.id,gc,curMonth,p,true):0;
+    const mkN=gc?getGrpMemberMakeupAbs(mb.id,gc,curMonth,p):0;
+    const attM=gc?getGrpMemberAttended(mb.id,gc,curMonth,p):0;
+    const owed=gc?grpMakeupOwed(mb.id,gc):0;
     const pps=p.pricePerSession||gc?.pricePerSession||0;
     const bill=grpBillings.find(b=>b.memberId===mb.id&&b.planId===p.id&&b.month===curMonth);
     const DAY_KPL=['일','월','화','수','목','금','토'];
@@ -6681,8 +6683,13 @@ function renderMbPlanCard(container, mb, p, box, close) {
     info.innerHTML=(gc?'<span style="color:#fbbf24;">'+gc.name+'</span>'+(daysStr?' ('+daysStr+')':'')+'<br>':'')
       +'회당 '+pps.toLocaleString()+'원 · 이번 달 '+curMonthSess+'회 = '+(curMonthSess*pps).toLocaleString()+'원<br>'
       +'시작일: '+p.startDate+(p.cancelledDate?' · 해지: '+p.cancelledDate:'')+'<br>'
-      +'이번 달 출석: <strong style="color:#3dc87a;">'+att+'/'+sched+'회</strong>'+(absN?' <span style="color:#f87171;">(결석 '+absN+')</span>':'')+' · '
+      +'이번 달 출석 <strong style="color:#3dc87a;">'+attM+'회</strong>'+(dedN?' · <span style="color:#f87171;">결석 '+dedN+'</span>':'')+(mkN?' · <span style="color:#60a5fa;">보강 '+mkN+'</span>':'')+(owed>0?' · <span style="color:#60a5fa;">보강 잔여 '+owed+'회</span>':'')+'<br>'
       +(bill?(bill.paid?'<span style="color:#3dc87a;">결제완료</span>':'<span style="color:#f87171;">미결제 ('+bill.amount.toLocaleString()+'원)</span>'):'청구 내역 없음');
+    if(owed>0&&isAdminUser()){
+      const mkBtn=card.appendChild(Object.assign(document.createElement('button'),{textContent:'보강 완료 처리 (−1)'}));
+      mkBtn.style.cssText='margin-top:8px;padding:5px 12px;border-radius:6px;border:1px solid rgba(96,165,250,.5);background:transparent;color:#60a5fa;font-size:11px;font-weight:600;cursor:pointer;';
+      mkBtn.onclick=()=>{if(!confirm('보강 1회를 완료 처리할까요? (보강 잔여 −1)'))return;mb.grpMakeupUsed=mb.grpMakeupUsed||{};mb.grpMakeupUsed[gc.id]=(mb.grpMakeupUsed[gc.id]||0)+1;sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);};
+    }
     return;
   }
   // 개인레슨(후불) 등록은 별도 카드
@@ -7166,13 +7173,36 @@ function getGrpMemberScheduled(plan,gc,month){
     return true;
   }).length;
 }
-// 회원의 이 달 결석 수 (세션 absentees에 표시된 것, 폐강/유효기간 밖 제외)
-function getGrpMemberAbsences(memberId,gc,month,plan){
+// 회원의 이 달 결석 수 (세션 absentees, 폐강/유효기간 밖 제외). onlyDeduct=true면 보강 제외(차감분만)
+function getGrpMemberAbsences(memberId,gc,month,plan,onlyDeduct){
   return grpMonthSessionDates(gc,month).filter(ds=>{
     if(plan&&!grpPlanActiveOn(plan,ds))return false;
     const s=grpSessMap[gc.id+'_'+ds];if(!s||s.status==='cancelled')return false;
-    return (s.absentees||[]).some(a=>a.memberId===memberId);
+    return (s.absentees||[]).some(a=>a.memberId===memberId&&(!onlyDeduct||!a.makeup));
   }).length;
+}
+// 이 달 출석 표시된(attended) 수
+function getGrpMemberAttended(memberId,gc,month,plan){
+  return grpMonthSessionDates(gc,month).filter(ds=>{
+    if(plan&&!grpPlanActiveOn(plan,ds))return false;
+    const s=grpSessMap[gc.id+'_'+ds];if(!s||s.status==='cancelled')return false;
+    return (s.attended||[]).some(a=>a.memberId===memberId);
+  }).length;
+}
+// 이 달 보강(이월) 표시된 결석 수
+function getGrpMemberMakeupAbs(memberId,gc,month,plan){
+  return grpMonthSessionDates(gc,month).filter(ds=>{
+    if(plan&&!grpPlanActiveOn(plan,ds))return false;
+    const s=grpSessMap[gc.id+'_'+ds];if(!s||s.status==='cancelled')return false;
+    return (s.absentees||[]).some(a=>a.memberId===memberId&&a.makeup);
+  }).length;
+}
+// 회원의 이 반 보강 잔여 = 누적 보강결석(전체 기간) − 보강완료 사용수
+function grpMakeupOwed(memberId,gc){
+  let cnt=0;
+  Object.keys(grpSessMap).forEach(k=>{if(!k.startsWith(gc.id+'_'))return;const s=grpSessMap[k];if(!s||s.status==='cancelled')return;if((s.absentees||[]).some(a=>a.memberId===memberId&&a.makeup))cnt++;});
+  const mb=members.find(m=>m.id===memberId);const used=(mb&&mb.grpMakeupUsed&&mb.grpMakeupUsed[gc.id])||0;
+  return Math.max(0,cnt-used);
 }
 // 그룹 구독 해지 (해지 시작일 선택). 그 날짜부터 유효하지 않고, 해지월 이후 청구 안 됨
 function openGrpCancelModal(mb,plan,onDone){
@@ -7216,18 +7246,19 @@ function ensureGrpBillings(){
       const P=plan.monthlyPrice||gc.monthlyPrice||0;
       const pps=plan.pricePerSession||gc.pricePerSession||(N>0&&P>0?Math.round(P/N):0);
       const isMonthly=N>0&&P>0;
+      // 등록월이 미래여도 그 달 청구는 즉시 생성(선결제). 그 외엔 이번 달까지
+      const billUntil=curMonth>=startMonth?curMonth:startMonth;
       let ym=new Date(startMonth+'-01T00:00:00');
-      while(_grpFmtD(ym).slice(0,7)<=curMonth){
+      while(_grpFmtD(ym).slice(0,7)<=billUntil){
         const month=_grpFmtD(ym).slice(0,7);
         if(cancelMonth&&month>cancelMonth)break; // 해지월 이후 청구 중단
         if((plan.noBillMonths||[]).includes(month)){ym.setMonth(ym.getMonth()+1);continue;}
-        // 새 모델: 등록=이 달 예정 수업 전부 청구(매출 즉시 적립), 미출석(결석)마다 회당 차감
+        // 선결제 월정액: 등록=정액 P 전부 청구(매출 즉시), 결석(차감)마다 회당 차감. 보강 결석은 차감 안 함
         const scheduled=getGrpMemberScheduled(plan,gc,month);
-        const absences=getGrpMemberAbsences(mb.id,gc,month,plan);
-        const attended=Math.max(0,scheduled-absences);
-        const sessions=attended;
-        const baseAmount=isMonthly?(scheduled>=N?P:scheduled*pps):(scheduled*pps);
-        const amount=Math.max(0,baseAmount-absences*pps);
+        const deductAbs=getGrpMemberAbsences(mb.id,gc,month,plan,true); // 보강 제외 = 실제 차감분
+        const baseAmount=isMonthly?P:(scheduled*pps); // 월정액=정액 P(달력 세션수와 무관), 레거시=예정×회당
+        const amount=Math.max(0,baseAmount-deductAbs*pps);
+        const sessions=isMonthly?Math.max(0,N-deductAbs):Math.max(0,scheduled-deductAbs);
         let bill=grpBillings.find(b=>b.memberId===mb.id&&b.planId===plan.id&&b.month===month);
         if(!bill){
           if(scheduled<=0){ym.setMonth(ym.getMonth()+1);continue;}
@@ -7896,8 +7927,7 @@ function _renderGrpMembers(ct){
         const gc=groupClasses.find(g=>g.id===plan.groupClassId);
         const pps=plan.pricePerSession||gc?.pricePerSession||0;
         const curSess=gc?calcMonthSessions(gc,curMonth):0;
-        const _sc=gc?getGrpMemberScheduled(plan,gc,curMonth):0;const _ab=gc?getGrpMemberAbsences(mb.id,gc,curMonth,plan):0;
-        const used=Math.max(0,_sc-_ab);
+        const used=gc?getGrpMemberAttended(mb.id,gc,curMonth,plan):0;
         const bill=grpBillings.find(b=>b.memberId===mb.id&&b.planId===plan.id&&b.month===curMonth);
         const daysStr=gc?(gc.days||[]).sort((a,b)=>a-b).map(d=>DAY_KM[d]).join('/'):'';
         rows.push({mb,plan,gc,pps,curSess,used,bill,daysStr});
@@ -8185,47 +8215,73 @@ function openGrpSessionModal(gc,date,sess,prefill){
     const listHdr=box.appendChild(document.createElement('div'));listHdr.style.cssText='font-size:13px;font-weight:700;color:#e2e8f0;margin:12px 0 6px;';
     const listEl=box.appendChild(document.createElement('div'));listEl.style.cssText='background:#111318;border-radius:10px;overflow:hidden;margin-bottom:14px;max-height:220px;overflow-y:auto;';
     // 새 모델: 기본 출석(등록=풀 청구). 이 버튼을 누르면 "결석" 표시 → 회당 차감
-    async function toggleAbsent(mb){
-      const s=grpSessMap[gc.id+'_'+date]||{classId:gc.id,date,status:'active',reservations:[],absentees:[]};
-      s.absentees=s.absentees||[];
-      const isAbs=s.absentees.some(a=>a.memberId===mb.id);
-      if(isAbs)s.absentees=s.absentees.filter(a=>a.memberId!==mb.id);
-      else s.absentees=[...s.absentees,{memberId:mb.id,memberName:mb.name}];
+    // 3단계 순환: 미체크 → 출석 → 결석 → 미체크. 결석(차감)만 청구 차감
+    async function cycleAttend(mb){
+      const s=grpSessMap[gc.id+'_'+date]||{classId:gc.id,date,status:'active',reservations:[],absentees:[],attended:[]};
+      s.attended=s.attended||[];s.absentees=s.absentees||[];
+      const inAtt=s.attended.some(a=>a.memberId===mb.id);
+      const inAbs=s.absentees.some(a=>a.memberId===mb.id);
+      if(!inAtt&&!inAbs){s.attended=[...s.attended,{memberId:mb.id,memberName:mb.name}];}
+      else if(inAtt){s.attended=s.attended.filter(a=>a.memberId!==mb.id);s.absentees=[...s.absentees,{memberId:mb.id,memberName:mb.name}];}
+      else{s.absentees=s.absentees.filter(a=>a.memberId!==mb.id);}
+      await svGrpSess(s);ensureGrpBillings();reRender();renderPcContent();
+    }
+    // 결석 → 보강(이월) 전환: makeup 플래그 토글. 보강이면 청구 차감 안 하고 보강 크레딧 적립
+    async function toggleMakeup(mb){
+      const s=grpSessMap[gc.id+'_'+date];if(!s||!s.absentees)return;
+      const a=s.absentees.find(x=>x.memberId===mb.id);if(!a)return;
+      a.makeup=!a.makeup;
       await svGrpSess(s);ensureGrpBillings();reRender();renderPcContent();
     }
     function reRender(){
       const curSess=grpSessMap[gc.id+'_'+date];const curRes=(curSess&&curSess.reservations)||[];
       const absList=(curSess&&curSess.absentees)||[];
-      const presentCnt=subMems.filter(m=>!absList.some(a=>a.memberId===m.id)).length;
+      const attListR=(curSess&&curSess.attended)||[];
+      const attCnt=subMems.filter(m=>attListR.some(a=>a.memberId===m.id)).length;
+      const absCnt=subMems.filter(m=>absList.some(a=>a.memberId===m.id)).length;
       const walkIns=curRes.filter(r=>!subMems.some(m=>m.id===r.memberId));
-      listHdr.textContent='회원 현황 (출석 '+presentCnt+'/'+subMems.length+'명)';
+      listHdr.textContent='회원 현황 (출석 '+attCnt+' · 결석 '+absCnt+' / '+subMems.length+'명)';
       listEl.innerHTML='';
-      // 구독 회원 자동 표시 (기본 출석)
+      // 구독 회원 — 기본 미체크(회색). 눌러서 출석→결석→미체크 순환
       if(!subMems.length){
         const e=listEl.appendChild(document.createElement('div'));e.style.cssText='padding:18px;text-align:center;color:#6b7494;font-size:13px;';e.textContent='등록된 구독 회원 없음';
       } else {
         subMems.forEach((mb,i)=>{
-          const isAbsent=absList.some(a=>a.memberId===mb.id);
+          const absEntry=absList.find(a=>a.memberId===mb.id);
+          const isAbsent=!!absEntry;const isMakeup=isAbsent&&!!absEntry.makeup;
+          const isAtt=attListR.some(a=>a.memberId===mb.id);
           const mPlan=(mb.plans||[]).find(p=>p.productType==='group'&&p.groupClassId===gc.id&&grpPlanActiveOn(p,date));
           const sched=mPlan?getGrpMemberScheduled(mPlan,gc,month):0;
           const absN=mPlan?getGrpMemberAbsences(mb.id,gc,month,mPlan):0;
-          const att=Math.max(0,sched-absN);
+          const dedN=mPlan?getGrpMemberAbsences(mb.id,gc,month,mPlan,true):0;const mkN=absN-dedN;
+          const attCntM=mPlan?getGrpMemberAttended(mb.id,gc,month,mPlan):0;
+          const owed=mPlan?grpMakeupOwed(mb.id,gc):0;
           const item=listEl.appendChild(document.createElement('div'));
-          item.style.cssText='display:flex;align-items:center;gap:10px;padding:9px 14px;'+(i>0?'border-top:1px solid #1e2026;':'');
-          // 출석 체크 버튼 (기본 출석=초록✓, 누르면 결석=빨강✕)
+          item.style.cssText='display:flex;align-items:center;gap:9px;padding:9px 14px;'+(i>0?'border-top:1px solid #1e2026;':'');
+          // 출석 체크 버튼: 미체크(회색○) → 출석(초록✓) → 결석(빨강✕) → 미체크. 보강이면 파랑↺
+          const stColor=isMakeup?'#60a5fa':(isAbsent?'#f87171':(isAtt?'#3dc87a':'#4a5068'));
+          const stBg=isMakeup?'#0e1a2e':(isAbsent?'#241010':(isAtt?'#0d2218':'transparent'));
           const ckBtn=item.appendChild(document.createElement('button'));
-          ckBtn.style.cssText='width:26px;height:26px;border-radius:50%;border:2px solid '+(isAbsent?'#f87171':'#3dc87a')+';background:'+(isAbsent?'#241010':'#0d2218')+';color:'+(isAbsent?'#f87171':'#3dc87a')+';font-size:13px;cursor:pointer;flex-shrink:0;transition:all .15s;display:flex;align-items:center;justify-content:center;';
-          ckBtn.textContent=isAbsent?'✕':'✓';
-          ckBtn.title=isAbsent?'결석 → 눌러서 출석으로':'출석 → 눌러서 결석 처리';
-          ckBtn.onclick=()=>toggleAbsent(mb);
-          // 이름
-          const nameDiv=item.appendChild(document.createElement('div'));nameDiv.style.cssText='flex:1;';
+          ckBtn.style.cssText='width:26px;height:26px;border-radius:50%;border:2px solid '+(isMakeup||isAbsent||isAtt?stColor:'#2a3050')+';background:'+stBg+';color:'+stColor+';font-size:13px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;';
+          ckBtn.textContent=isMakeup?'↺':(isAbsent?'✕':(isAtt?'✓':''));
+          ckBtn.title='눌러서 출석 → 결석 → 미체크 순환';
+          ckBtn.onclick=()=>cycleAttend(mb);
+          // 이름 + 보강 잔여
+          const nameDiv=item.appendChild(document.createElement('div'));nameDiv.style.cssText='flex:1;min-width:0;';
           const nmRow=nameDiv.appendChild(document.createElement('div'));nmRow.style.cssText='font-size:13px;font-weight:700;color:#e2e8f0;';nmRow.textContent=mb.name;
           if(mPlan&&mPlan.cancelledDate){const ct=nmRow.appendChild(document.createElement('span'));ct.textContent=' · 해지예정 '+mPlan.cancelledDate.slice(5);ct.style.cssText='font-size:10px;color:#f87171;font-weight:600;';}
-          nameDiv.appendChild(Object.assign(document.createElement('div'),{textContent:'이번달 출석 '+att+'/'+sched+'회'+(absN?' · 결석 '+absN:'')})).style.cssText='font-size:11px;color:'+(absN?'#f87171':'#4a5068')+';margin-top:1px;';
+          if(owed>0){const ow=nmRow.appendChild(document.createElement('span'));ow.textContent=' · 보강 '+owed+'회 필요';ow.style.cssText='font-size:10px;color:#60a5fa;font-weight:700;';}
+          nameDiv.appendChild(Object.assign(document.createElement('div'),{textContent:'이번달 출석 '+attCntM+'회'+(dedN?' · 결석 '+dedN:'')+(mkN?' · 보강 '+mkN:'')})).style.cssText='font-size:11px;color:'+(dedN?'#f87171':(mkN?'#60a5fa':'#4a5068'))+';margin-top:1px;';
+          // 보강 버튼 (결석일 때만): 이 결석을 보강(이월, 차감안함)으로/일반결석(차감)으로 전환
+          if(isAbsent){
+            const mkBtn=item.appendChild(document.createElement('button'));mkBtn.textContent=isMakeup?'보강✓':'보강';
+            mkBtn.style.cssText='font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid '+(isMakeup?'#60a5fa':'#2a3050')+';background:'+(isMakeup?'rgba(96,165,250,.15)':'transparent')+';color:'+(isMakeup?'#60a5fa':'#6b7494')+';cursor:pointer;white-space:nowrap;flex-shrink:0;';
+            mkBtn.title=isMakeup?'보강(이월) 처리됨 — 눌러서 일반 결석(차감)으로':'이 결석을 보강(이월)으로 처리 — 청구 차감 안 하고 보강 1회 적립';
+            mkBtn.onclick=(e)=>{e.stopPropagation();toggleMakeup(mb);};
+          }
           // 출석 배지
-          const bdg=item.appendChild(document.createElement('span'));bdg.style.cssText='font-size:11px;font-weight:700;padding:3px 9px;border-radius:5px;white-space:nowrap;';
-          bdg.textContent=isAbsent?'결석':'출석';bdg.style.background=isAbsent?'rgba(248,113,113,.15)':'rgba(61,200,122,.15)';bdg.style.color=isAbsent?'#f87171':'#3dc87a';
+          const bdg=item.appendChild(document.createElement('span'));bdg.style.cssText='font-size:11px;font-weight:700;padding:3px 9px;border-radius:5px;white-space:nowrap;flex-shrink:0;';
+          bdg.textContent=isMakeup?'보강':(isAbsent?'결석':(isAtt?'출석':'미체크'));bdg.style.background=isMakeup?'rgba(96,165,250,.15)':(isAbsent?'rgba(248,113,113,.15)':(isAtt?'rgba(61,200,122,.15)':'rgba(74,80,104,.15)'));bdg.style.color=stColor;
           // 해지 버튼 (관리자 전용)
           if(isAdminUser()){
             const cxBtn=item.appendChild(document.createElement('button'));cxBtn.textContent='해지';
