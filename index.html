@@ -6264,8 +6264,10 @@ function renderMbPlanCard(container, mb, p, box, close) {
     }
     const info=card.appendChild(document.createElement('div'));info.style.cssText='font-size:11px;color:#4a5068;line-height:1.9;';
     const today=new Date();const curMonth=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0');
-    const used=gc?getGrpMemberMonthUsed(mb.id,gc.id,curMonth):0;
     const curMonthSess=gc?calcMonthSessions(gc,curMonth):0;
+    const sched=gc?getGrpMemberScheduled(p,gc,curMonth):0;
+    const absN=gc?getGrpMemberAbsences(mb.id,gc,curMonth,p):0;
+    const att=Math.max(0,sched-absN);
     const pps=p.pricePerSession||gc?.pricePerSession||0;
     const bill=grpBillings.find(b=>b.memberId===mb.id&&b.planId===p.id&&b.month===curMonth);
     const DAY_KPL=['일','월','화','수','목','금','토'];
@@ -6273,7 +6275,7 @@ function renderMbPlanCard(container, mb, p, box, close) {
     info.innerHTML=(gc?'<span style="color:#fbbf24;">'+gc.name+'</span>'+(daysStr?' ('+daysStr+')':'')+'<br>':'')
       +'회당 '+pps.toLocaleString()+'원 · 이번 달 '+curMonthSess+'회 = '+(curMonthSess*pps).toLocaleString()+'원<br>'
       +'시작일: '+p.startDate+(p.cancelledDate?' · 해지: '+p.cancelledDate:'')+'<br>'
-      +'이번 달 출석: <strong style="color:#3dc87a;">'+used+'/'+curMonthSess+'회</strong> · '
+      +'이번 달 출석: <strong style="color:#3dc87a;">'+att+'/'+sched+'회</strong>'+(absN?' <span style="color:#f87171;">(결석 '+absN+')</span>':'')+' · '
       +(bill?(bill.paid?'<span style="color:#3dc87a;">결제완료</span>':'<span style="color:#f87171;">미결제 ('+bill.amount.toLocaleString()+'원)</span>'):'청구 내역 없음');
     return;
   }
@@ -6744,6 +6746,28 @@ function grpPlanActiveOn(plan,dateStr){
   if(plan.status==='cancelled'){if(!plan.cancelledDate)return false;return dateStr<plan.cancelledDate;}
   return true;
 }
+// 이 달 해당 요일 세션 날짜 목록
+function grpMonthSessionDates(gc,month){
+  const [ys,ms]=month.split('-').map(Number);const lastDay=new Date(ys,ms,0).getDate();const out=[];
+  for(let day=1;day<=lastDay;day++){const d=new Date(ys,ms-1,day);if((gc.days||[]).includes(d.getDay()))out.push(_grpFmtD(d));}
+  return out;
+}
+// 회원(플랜)의 이 달 "예정 수업수" = 유효기간(시작~해지) 내 + 폐강 아닌 세션 수. 결석 무관(등록=풀 청구 기준)
+function getGrpMemberScheduled(plan,gc,month){
+  return grpMonthSessionDates(gc,month).filter(ds=>{
+    if(!grpPlanActiveOn(plan,ds))return false;
+    const s=grpSessMap[gc.id+'_'+ds];if(s&&s.status==='cancelled')return false;
+    return true;
+  }).length;
+}
+// 회원의 이 달 결석 수 (세션 absentees에 표시된 것, 폐강/유효기간 밖 제외)
+function getGrpMemberAbsences(memberId,gc,month,plan){
+  return grpMonthSessionDates(gc,month).filter(ds=>{
+    if(plan&&!grpPlanActiveOn(plan,ds))return false;
+    const s=grpSessMap[gc.id+'_'+ds];if(!s||s.status==='cancelled')return false;
+    return (s.absentees||[]).some(a=>a.memberId===memberId);
+  }).length;
+}
 // 그룹 구독 해지 (해지 시작일 선택). 그 날짜부터 유효하지 않고, 해지월 이후 청구 안 됨
 function openGrpCancelModal(mb,plan,onDone){
   const gc=groupClasses.find(g=>g.id===plan.groupClassId);
@@ -6791,12 +6815,16 @@ function ensureGrpBillings(){
         const month=_grpFmtD(ym).slice(0,7);
         if(cancelMonth&&month>cancelMonth)break; // 해지월 이후 청구 중단
         if((plan.noBillMonths||[]).includes(month)){ym.setMonth(ym.getMonth()+1);continue;}
-        const attended=getGrpMemberMonthUsed(mb.id,gc.id,month);
+        // 새 모델: 등록=이 달 예정 수업 전부 청구(매출 즉시 적립), 미출석(결석)마다 회당 차감
+        const scheduled=getGrpMemberScheduled(plan,gc,month);
+        const absences=getGrpMemberAbsences(mb.id,gc,month,plan);
+        const attended=Math.max(0,scheduled-absences);
         const sessions=attended;
-        const amount=isMonthly?(attended>=N?P:Math.round(attended*P/N)):(attended*pps);
+        const baseAmount=isMonthly?(scheduled>=N?P:scheduled*pps):(scheduled*pps);
+        const amount=Math.max(0,baseAmount-absences*pps);
         let bill=grpBillings.find(b=>b.memberId===mb.id&&b.planId===plan.id&&b.month===month);
         if(!bill){
-          if(attended<=0){ym.setMonth(ym.getMonth()+1);continue;}
+          if(scheduled<=0){ym.setMonth(ym.getMonth()+1);continue;}
           bill={id:'bill'+Date.now()+'_'+Math.random().toString(36).slice(2),
             memberId:mb.id,memberName:mb.name,planId:plan.id,
             groupClassId:plan.groupClassId,groupClassName:gc.name,
@@ -7434,7 +7462,8 @@ function _renderGrpMembers(ct){
         const gc=groupClasses.find(g=>g.id===plan.groupClassId);
         const pps=plan.pricePerSession||gc?.pricePerSession||0;
         const curSess=gc?calcMonthSessions(gc,curMonth):0;
-        const used=gc?getGrpMemberMonthUsed(mb.id,plan.groupClassId,curMonth):0;
+        const _sc=gc?getGrpMemberScheduled(plan,gc,curMonth):0;const _ab=gc?getGrpMemberAbsences(mb.id,gc,curMonth,plan):0;
+        const used=Math.max(0,_sc-_ab);
         const bill=grpBillings.find(b=>b.memberId===mb.id&&b.planId===plan.id&&b.month===curMonth);
         const daysStr=gc?(gc.days||[]).sort((a,b)=>a-b).map(d=>DAY_KM[d]).join('/'):'';
         rows.push({mb,plan,gc,pps,curSess,used,bill,daysStr});
@@ -7702,40 +7731,48 @@ function openGrpSessionModal(gc,date,sess){
     // 회원 현황 헤더
     const listHdr=box.appendChild(document.createElement('div'));listHdr.style.cssText='font-size:13px;font-weight:700;color:#e2e8f0;margin:12px 0 6px;';
     const listEl=box.appendChild(document.createElement('div'));listEl.style.cssText='background:#111318;border-radius:10px;overflow:hidden;margin-bottom:14px;max-height:220px;overflow-y:auto;';
-    async function toggleAttend(mb){
-      const s=grpSessMap[gc.id+'_'+date]||{classId:gc.id,date,status:'active',reservations:[]};
-      const already=s.reservations.some(r=>r.memberId===mb.id);
-      if(already)s.reservations=s.reservations.filter(r=>r.memberId!==mb.id);
-      else{if(s.reservations.length>=cap){alert('정원이 가득 찼습니다.');return;}s.reservations=[...s.reservations,{memberId:mb.id,memberName:mb.name}];}
+    // 새 모델: 기본 출석(등록=풀 청구). 이 버튼을 누르면 "결석" 표시 → 회당 차감
+    async function toggleAbsent(mb){
+      const s=grpSessMap[gc.id+'_'+date]||{classId:gc.id,date,status:'active',reservations:[],absentees:[]};
+      s.absentees=s.absentees||[];
+      const isAbs=s.absentees.some(a=>a.memberId===mb.id);
+      if(isAbs)s.absentees=s.absentees.filter(a=>a.memberId!==mb.id);
+      else s.absentees=[...s.absentees,{memberId:mb.id,memberName:mb.name}];
       await svGrpSess(s);ensureGrpBillings();reRender();renderPcContent();
     }
     function reRender(){
       const curSess=grpSessMap[gc.id+'_'+date];const curRes=(curSess&&curSess.reservations)||[];
-      const attended=curRes.filter(r=>subMems.some(m=>m.id===r.memberId)).length;
+      const absList=(curSess&&curSess.absentees)||[];
+      const presentCnt=subMems.filter(m=>!absList.some(a=>a.memberId===m.id)).length;
       const walkIns=curRes.filter(r=>!subMems.some(m=>m.id===r.memberId));
-      listHdr.textContent='회원 현황 (출석 '+attended+'/'+subMems.length+'명)';
+      listHdr.textContent='회원 현황 (출석 '+presentCnt+'/'+subMems.length+'명)';
       listEl.innerHTML='';
-      // 구독 회원 자동 표시
+      // 구독 회원 자동 표시 (기본 출석)
       if(!subMems.length){
         const e=listEl.appendChild(document.createElement('div'));e.style.cssText='padding:18px;text-align:center;color:#6b7494;font-size:13px;';e.textContent='등록된 구독 회원 없음';
       } else {
         subMems.forEach((mb,i)=>{
-          const isAttended=curRes.some(r=>r.memberId===mb.id);
-          const used=getGrpMemberMonthUsed(mb.id,gc.id,month);const total=calcMonthSessions(gc,month);const remain=Math.max(total-used,0);
+          const isAbsent=absList.some(a=>a.memberId===mb.id);
+          const mPlan=(mb.plans||[]).find(p=>p.productType==='group'&&p.groupClassId===gc.id&&grpPlanActiveOn(p,date));
+          const sched=mPlan?getGrpMemberScheduled(mPlan,gc,month):0;
+          const absN=mPlan?getGrpMemberAbsences(mb.id,gc,month,mPlan):0;
+          const att=Math.max(0,sched-absN);
           const item=listEl.appendChild(document.createElement('div'));
           item.style.cssText='display:flex;align-items:center;gap:10px;padding:9px 14px;'+(i>0?'border-top:1px solid #1e2026;':'');
-          // 출석 체크 버튼
+          // 출석 체크 버튼 (기본 출석=초록✓, 누르면 결석=빨강✕)
           const ckBtn=item.appendChild(document.createElement('button'));
-          ckBtn.style.cssText='width:26px;height:26px;border-radius:50%;border:2px solid '+(isAttended?'#3dc87a':'#2a3050')+';background:'+(isAttended?'#0d2218':'transparent')+';color:'+(isAttended?'#3dc87a':'#3a3f58')+';font-size:13px;cursor:pointer;flex-shrink:0;transition:all .15s;display:flex;align-items:center;justify-content:center;';
-          ckBtn.textContent=isAttended?'✓':'';
-          ckBtn.onclick=()=>toggleAttend(mb);
+          ckBtn.style.cssText='width:26px;height:26px;border-radius:50%;border:2px solid '+(isAbsent?'#f87171':'#3dc87a')+';background:'+(isAbsent?'#241010':'#0d2218')+';color:'+(isAbsent?'#f87171':'#3dc87a')+';font-size:13px;cursor:pointer;flex-shrink:0;transition:all .15s;display:flex;align-items:center;justify-content:center;';
+          ckBtn.textContent=isAbsent?'✕':'✓';
+          ckBtn.title=isAbsent?'결석 → 눌러서 출석으로':'출석 → 눌러서 결석 처리';
+          ckBtn.onclick=()=>toggleAbsent(mb);
           // 이름
           const nameDiv=item.appendChild(document.createElement('div'));nameDiv.style.cssText='flex:1;';
-          nameDiv.appendChild(Object.assign(document.createElement('div'),{textContent:mb.name})).style.cssText='font-size:13px;font-weight:700;color:#e2e8f0;';
-          nameDiv.appendChild(Object.assign(document.createElement('div'),{textContent:'이번달 잔여: '+remain+'/'+total+'회'})).style.cssText='font-size:11px;color:'+(remain>0?'#4a5068':'#f87171')+';margin-top:1px;';
+          const nmRow=nameDiv.appendChild(document.createElement('div'));nmRow.style.cssText='font-size:13px;font-weight:700;color:#e2e8f0;';nmRow.textContent=mb.name;
+          if(mPlan&&mPlan.cancelledDate){const ct=nmRow.appendChild(document.createElement('span'));ct.textContent=' · 해지예정 '+mPlan.cancelledDate.slice(5);ct.style.cssText='font-size:10px;color:#f87171;font-weight:600;';}
+          nameDiv.appendChild(Object.assign(document.createElement('div'),{textContent:'이번달 출석 '+att+'/'+sched+'회'+(absN?' · 결석 '+absN:'')})).style.cssText='font-size:11px;color:'+(absN?'#f87171':'#4a5068')+';margin-top:1px;';
           // 출석 배지
           const bdg=item.appendChild(document.createElement('span'));bdg.style.cssText='font-size:11px;font-weight:700;padding:3px 9px;border-radius:5px;white-space:nowrap;';
-          bdg.textContent=isAttended?'출석':'미출석';bdg.style.background=isAttended?'rgba(61,200,122,.15)':'rgba(74,80,104,.15)';bdg.style.color=isAttended?'#3dc87a':'#6b7494';
+          bdg.textContent=isAbsent?'결석':'출석';bdg.style.background=isAbsent?'rgba(248,113,113,.15)':'rgba(61,200,122,.15)';bdg.style.color=isAbsent?'#f87171':'#3dc87a';
           // 해지 버튼 (관리자 전용)
           if(isAdminUser()){
             const cxBtn=item.appendChild(document.createElement('button'));cxBtn.textContent='해지';
@@ -7768,7 +7805,7 @@ function openGrpSessionModal(gc,date,sess){
         members.filter(m=>!subIds.includes(m.id)).forEach(m=>{const o=document.createElement('option');o.value=m.id;o.textContent=m.name;memSel.appendChild(o);});
       }
       refreshSel();
-      box.appendChild(Object.assign(document.createElement('div'),{textContent:'등록하면 이 수업 출석으로 처리되어 이번 달 청구에 반영됩니다. 청구 관리에서 결제완료를 누르면 매출로 등록됩니다.'})).style.cssText='font-size:11px;color:#3a3f58;margin-bottom:8px;line-height:1.5;';
+      box.appendChild(Object.assign(document.createElement('div'),{textContent:'등록하면 이번 달 전체 수업이 청구에 즉시 반영됩니다(매출 적립). 결석 처리한 만큼 회당 차감됩니다. 청구 관리에서 결제완료 시 매출로 확정됩니다.'})).style.cssText='font-size:11px;color:#3a3f58;margin-bottom:8px;line-height:1.5;';
       const addBtn=box.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'정기 회원으로 등록'}));
       addBtn.style.cssText='width:100%;padding:9px;font-size:13px;margin-bottom:4px;';
       addBtn.onclick=async()=>{
@@ -7783,15 +7820,9 @@ function openGrpSessionModal(gc,date,sess){
           groupClassId:gc.id,monthlySessions:N,monthlyPrice:P,pricePerSession:pps,startDate:date,status:'active',
           paymentMethod:null,addedAt:now.getTime()};
         mb.plans=mb.plans||[];mb.plans.push(plan);sv('jbog10_mb',members);
-        // 이 세션(오늘) 출석 처리(정원 여유 있을 때만) → 출석분이 청구에 자동 반영됨
-        const s=grpSessMap[gc.id+'_'+date]||{classId:gc.id,date,status:'active',reservations:[]};
-        let attendedToday=false;
-        if(!s.reservations.some(r=>r.memberId===mb.id)&&s.reservations.length<cap){
-          s.reservations=[...s.reservations,{memberId:mb.id,memberName:mb.name}];
-          await svGrpSess(s);attendedToday=true;
-        }
+        // 새 모델: 등록 즉시 이 달 예정 수업 전체가 청구(매출)로 반영됨. 결석 처리 시 회당 차감
         ensureGrpBillings();
-        alert('✅ 정기 회원 등록 완료!\n'+mb.name+' · 월 '+N+'회 '+P.toLocaleString()+'원 (회당 '+pps.toLocaleString()+'원)'+(attendedToday?'\n이 수업 출석 처리됨':'')+'\n결석 시 회당 차감되어 청구됩니다.');
+        alert('✅ 정기 회원 등록 완료!\n'+mb.name+' · 월 '+N+'회 '+P.toLocaleString()+'원 (회당 '+pps.toLocaleString()+'원)\n등록 즉시 이 달 전체가 청구에 반영됩니다. 결석 처리하면 회당 차감됩니다.');
         subMems=members.filter(mb2=>(mb2.plans||[]).some(p=>p.productType==='group'&&p.groupClassId===gc.id&&grpPlanActiveOn(p,date)));
         reRender();refreshSel();renderPcContent();
       };
