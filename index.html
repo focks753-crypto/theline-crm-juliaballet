@@ -5711,7 +5711,7 @@ function openPcPayment(mbId,parentBox,parentClose){
       const sdI=sdF.appendChild(document.createElement('input'));sdI.type='date';sdI.value=selStartDate;sdI.style.cssText='width:100%;padding:8px 10px;border:1px solid #1e2026;border-radius:6px;background:#0a0c10;color:#e2e8f0;font-size:13px;outline:none;color-scheme:dark;cursor:pointer;box-sizing:border-box;';
       selStartDate=sdI.value;selPrice=0;sdI.onchange=()=>{selStartDate=sdI.value;};
       const noteDiv=c.appendChild(document.createElement('div'));noteDiv.style.cssText='font-size:11px;color:#3a3f58;margin-top:8px;line-height:1.6;';
-      noteDiv.textContent='월 정액입니다. 다 출석하면 월 금액 그대로, 결석(출석 미체크)하면 그만큼 회당 금액이 차감되어 청구됩니다. 청구관리에서 결제완료 시 매출로 잡힙니다.';
+      noteDiv.textContent='월 정액입니다. 등록하면 이 달 정액이 바로 매출(총매출)에 잡힙니다. 결석 처리한 만큼만 회당 차감(보강은 차감 안 함)되고, 청구관리에서 결제완료를 누르면 결제수단(카드/현금/계좌)이 기록됩니다.';
       payBtn.textContent='그룹수업 등록';
       return;
     }
@@ -8314,7 +8314,7 @@ function openGrpSessionModal(gc,date,sess,prefill){
         members.filter(m=>!subIds.includes(m.id)).forEach(m=>{const o=document.createElement('option');o.value=m.id;o.textContent=m.name;memSel.appendChild(o);});
       }
       refreshSel();
-      box.appendChild(Object.assign(document.createElement('div'),{textContent:'등록하면 이번 달 전체 수업이 청구에 즉시 반영됩니다(매출 적립). 결석 처리한 만큼 회당 차감됩니다. 청구 관리에서 결제완료 시 매출로 확정됩니다.'})).style.cssText='font-size:11px;color:#3a3f58;margin-bottom:8px;line-height:1.5;';
+      box.appendChild(Object.assign(document.createElement('div'),{textContent:'등록하면 이 달 정액이 매출(총매출)에 바로 잡힙니다. 결석 처리한 만큼만 회당 차감(보강은 차감 안 함)됩니다. 청구관리에서 결제완료를 누르면 결제수단(카드/현금/계좌)이 기록됩니다.'})).style.cssText='font-size:11px;color:#3a3f58;margin-bottom:8px;line-height:1.5;';
       const addBtn=box.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'정기 회원으로 등록'}));
       addBtn.style.cssText='width:100%;padding:9px;font-size:13px;margin-bottom:4px;';
       addBtn.onclick=async()=>{
