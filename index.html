@@ -1177,7 +1177,7 @@ function roomOccupancy(dateStr){
   Object.keys(grpSessMap).forEach(k=>{
     if(!k.endsWith('_'+dateStr))return;const ss=grpSessMap[k];if(!ss||ss.status==='cancelled'||!ss.roomId)return;
     const gc=groupClasses.find(g=>g.id===ss.classId);if(!gc)return;
-    const st=_hm(gc.time);const du=gc.duration||60;const tId=effectiveGrpTrainerId(gc,dateStr,ss);const tr=trainers.find(t=>t.id===tId);
+    const st=_hm(ss.time||gc.time);const du=ss.duration||gc.duration||60;const tId=effectiveGrpTrainerId(gc,dateStr,ss);const tr=trainers.find(t=>t.id===tId);
     (occ[ss.roomId]=occ[ss.roomId]||[]).push({startMin:st,endMin:st+du,label:gc.name,kind:'group',id:k,gc,trainerId:tId,color:tr?getTrainerColor(tr).dot:'#fbbf24'});
   });
   return occ;
@@ -4820,7 +4820,7 @@ function renderPcRooms(ct,acts){
   let lo=9*60,hi=22*60;rs.forEach(r=>(occ[r.id]||[]).forEach(b=>{lo=Math.min(lo,b.startMin);hi=Math.max(hi,b.endMin);}));
   lo=Math.max(6*60,Math.floor(lo/30)*30);hi=Math.min(23*60+30,Math.ceil(hi/30)*30);const step=30;
   const times=[];for(let t=lo;t<hi;t+=step)times.push(t);
-  const covered={},startMap={};rs.forEach(r=>{covered[r.id]={};startMap[r.id]={};(occ[r.id]||[]).forEach(b=>{const s0=Math.max(b.startMin,lo);startMap[r.id][s0]=b;for(let t=s0;t<Math.min(b.endMin,hi);t+=step)covered[r.id][t]=b;});});
+  const covered={},startMap={};rs.forEach(r=>{covered[r.id]={};startMap[r.id]={};(occ[r.id]||[]).forEach(b=>{const rowStart=Math.floor(Math.max(b.startMin,lo)/step)*step;const rowEnd=Math.max(rowStart+step,Math.ceil(Math.min(b.endMin,hi)/step)*step);startMap[r.id][rowStart]=b;for(let t=rowStart;t<rowEnd;t+=step)covered[r.id][t]=b;});});
   // 안내
   ct.appendChild(Object.assign(document.createElement('div'),{textContent:'빈 칸을 누르면 그 룸·시간으로 수업을 추가하고, 예약된 칸을 누르면 상세를 볼 수 있어요.'})).style.cssText='font-size:12px;color:#6b7494;margin-bottom:10px;';
   const tw=ct.appendChild(_mk('div'));tw.style.cssText='overflow:auto;border:1px solid #1e2026;border-radius:10px;max-height:72vh;';
@@ -4835,7 +4835,7 @@ function renderPcRooms(ct,acts){
     rs.forEach(r=>{
       if(covered[r.id][t]&&!startMap[r.id][t])return;
       if(startMap[r.id][t]){
-        const b=startMap[r.id][t];const span=Math.max(1,Math.ceil((Math.min(b.endMin,hi)-t)/step));
+        const b=startMap[r.id][t];const _re=Math.max(t+step,Math.ceil(Math.min(b.endMin,hi)/step)*step);const span=Math.max(1,Math.round((_re-t)/step));
         const td=tr.appendChild(document.createElement('td'));td.rowSpan=span;
         td.style.cssText='border:1px solid #23262f;padding:4px 5px;vertical-align:top;background:'+b.color+'22;border-left:3px solid '+b.color+';cursor:pointer;';
         td.innerHTML='<div style="font-size:11px;font-weight:700;color:#e2e8f0;line-height:1.25;word-break:break-all;">'+b.label+'</div><div style="font-size:9px;color:#8b93a7;margin-top:1px;">'+_mh(b.startMin)+'~'+_mh(b.endMin)+(b.kind==='group'?' · 그룹':'')+'</div>';
@@ -4843,9 +4843,37 @@ function renderPcRooms(ct,acts){
       } else {
         const td=tr.appendChild(document.createElement('td'));td.style.cssText='border:1px solid #1a1c22;height:20px;cursor:pointer;';
         td.onmouseenter=()=>td.style.background='rgba(129,140,248,.12)';td.onmouseleave=()=>td.style.background='';
-        td.onclick=()=>openPcAddSchedule(dateStr,{time:_mh(t),roomId:r.id});
+        td.onclick=()=>openRoomCellAdd(dateStr,_mh(t),r.id);
       }
     });
+  });
+}
+// 룸 현황 빈칸 클릭 → 개인레슨 / 그룹수업 선택해서 이 룸·시간에 추가
+function openRoomCellAdd(dateStr,timeStr,roomId){
+  const dow=new Date(dateStr+'T00:00:00').getDay();
+  const DOWK=['일','월','화','수','목','금','토'];
+  const actClasses=groupClasses.filter(g=>g.active!==false).sort((a,b)=>{const aa=(a.days||[]).includes(dow)?0:1,bb=(b.days||[]).includes(dow)?0:1;return aa-bb;});
+  pcModal((box,close)=>{
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'수업 추가'}));
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub',textContent:dateStr+' ('+DOWK[dow]+') '+timeStr+' · '+(roomName(roomId)||'룸')}));
+    // 개인레슨
+    const b1=box.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'＋ 개인레슨 추가'}));
+    b1.style.cssText='width:100%;padding:12px;font-size:14px;margin:6px 0 4px;';
+    b1.onclick=()=>{close();openPcAddSchedule(dateStr,{time:timeStr,roomId,noRecur:true});};
+    // 그룹수업
+    box.appendChild(Object.assign(document.createElement('div'),{textContent:'그룹수업 배치 (이 룸·시간에)'})).style.cssText='font-size:11px;font-weight:700;color:#3a3f58;letter-spacing:.5px;margin:14px 0 6px;';
+    const listEl=box.appendChild(document.createElement('div'));listEl.style.cssText='display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;';
+    if(!actClasses.length){listEl.appendChild(Object.assign(document.createElement('div'),{textContent:'등록된 그룹수업이 없습니다.'})).style.cssText='font-size:13px;color:#3a3f58;padding:8px;';}
+    actClasses.forEach(gc=>{
+      const today=(gc.days||[]).includes(dow);
+      const daysStr=(gc.days||[]).slice().sort((a,b)=>a-b).map(d=>DOWK[d]).join('/');
+      const btn=listEl.appendChild(document.createElement('button'));btn.type='button';
+      btn.style.cssText='display:flex;align-items:center;gap:8px;text-align:left;padding:10px 12px;border-radius:9px;border:1px solid '+(today?'#fbbf24':'#1e2026')+';background:'+(today?'rgba(251,191,36,.08)':'#0f1117')+';color:#e2e8f0;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;';
+      btn.innerHTML='<span style="flex:1;">'+gc.name+'</span><span style="font-size:11px;color:#6b7494;font-weight:600;">'+(daysStr?daysStr+' ':'')+(gc.time||'')+(today?' · 이 요일':'')+'</span>';
+      btn.onclick=()=>{close();openGrpSessionModal(gc,dateStr,grpSessMap[gc.id+'_'+dateStr],{roomId,time:timeStr});};
+    });
+    const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='14px';
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
   });
 }
 // 룸 관리 모달 (관리자) — 이름 추가/수정/삭제/순서
@@ -7941,7 +7969,7 @@ function openPtRecurringModal(mb,plan,parentBox,parentClose){
   });
 }
 
-function openGrpSessionModal(gc,date,sess){
+function openGrpSessionModal(gc,date,sess,prefill){
   const DAY_KO=['일','월','화','수','목','금','토'];
   const dObj=new Date(date+'T00:00:00');
   const cap=gc.capacity||0;
@@ -7955,13 +7983,21 @@ function openGrpSessionModal(gc,date,sess){
     if(isCancelled){const cTag=box.appendChild(document.createElement('div'));cTag.style.cssText='background:#200d0d;border:1px solid #301515;border-radius:8px;padding:10px 14px;color:#f87171;font-size:13px;margin:8px 0;';cTag.textContent='⚠ 이 수업은 폐강되었습니다.'+(sess.cancelReason?' ('+sess.cancelReason+')':'');}
     // 담당 강사 변경(이 날짜만 대타 / 이 날짜부터 담당 변경)
     if(!isCancelled){
-      // 룸(방) — 이 날짜(회차) 기준. 사용 중 룸은 선택 불가
-      const roomWrap=box.appendChild(document.createElement('div'));roomWrap.style.cssText='background:#111318;border:1px solid #1e2026;border-radius:8px;padding:10px 12px;margin:4px 0 10px;display:flex;align-items:center;gap:8px;';
-      roomWrap.appendChild(Object.assign(document.createElement('span'),{textContent:'룸(방)'})).style.cssText='font-size:12px;color:#6b7494;white-space:nowrap;';
-      const roomSel=roomWrap.appendChild(document.createElement('select'));roomSel.className='pcm-select';roomSel.style.cssText='flex:1;padding:6px 10px;font-size:12px;';
+      // 시간 + 룸(방) — 이 날짜(회차) 기준. 사용 중 룸은 선택 불가. 룸 현황에 연동됨
       const _cs0=grpSessMap[gc.id+'_'+date];
-      fillRoomSelect(roomSel,date,_hm(gc.time),gc.duration||60,(_cs0&&_cs0.roomId)||'',gc.id+'_'+date);
-      roomSel.onchange=async()=>{const s=grpSessMap[gc.id+'_'+date]||{classId:gc.id,date,status:'active',reservations:[]};s.roomId=roomSel.value||null;await svGrpSess(s);renderPcContent();};
+      const curTime=(_cs0&&_cs0.time)||(prefill&&prefill.time)||gc.time;
+      const roomWrap=box.appendChild(document.createElement('div'));roomWrap.style.cssText='background:#111318;border:1px solid #1e2026;border-radius:8px;padding:10px 12px;margin:4px 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+      roomWrap.appendChild(Object.assign(document.createElement('span'),{textContent:'시간'})).style.cssText='font-size:12px;color:#6b7494;white-space:nowrap;';
+      const timeSel=roomWrap.appendChild(document.createElement('select'));timeSel.className='pcm-select';timeSel.style.cssText='padding:6px 10px;font-size:12px;';
+      (TIMES.includes(curTime)?TIMES:[curTime,...TIMES]).forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;if(t===curTime)o.selected=true;timeSel.appendChild(o);});
+      roomWrap.appendChild(Object.assign(document.createElement('span'),{textContent:'룸(방)'})).style.cssText='font-size:12px;color:#6b7494;white-space:nowrap;margin-left:6px;';
+      const roomSel=roomWrap.appendChild(document.createElement('select'));roomSel.className='pcm-select';roomSel.style.cssText='flex:1;min-width:110px;padding:6px 10px;font-size:12px;';
+      function _grpRR(){fillRoomSelect(roomSel,date,_hm(timeSel.value),gc.duration||60,(grpSessMap[gc.id+'_'+date]||{}).roomId||(prefill&&prefill.roomId)||'',gc.id+'_'+date);}
+      _grpRR();
+      async function _saveGrpRT(){const s=grpSessMap[gc.id+'_'+date]||{classId:gc.id,date,status:'active',reservations:[]};s.time=timeSel.value||null;s.roomId=roomSel.value||null;await svGrpSess(s);renderPcContent();}
+      timeSel.onchange=()=>{_grpRR();_saveGrpRT();};
+      roomSel.onchange=_saveGrpRT;
+      if(prefill&&(prefill.roomId||prefill.time)){(async()=>{if(prefill.time)timeSel.value=prefill.time;_grpRR();if(prefill.roomId)roomSel.value=prefill.roomId;await _saveGrpRT();})();}
       const trWrap=box.appendChild(document.createElement('div'));trWrap.style.cssText='background:#111318;border:1px solid #1e2026;border-radius:8px;padding:10px 12px;margin:4px 0 10px;';
       const trTop=trWrap.appendChild(document.createElement('div'));trTop.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
       trTop.appendChild(Object.assign(document.createElement('span'),{textContent:'담당 강사 변경'})).style.cssText='font-size:12px;color:#6b7494;white-space:nowrap;';
@@ -8816,7 +8852,9 @@ function openPcAddSchedule(dateStr,prefill){
       btn.onclick=()=>{btn._on=!btn._on;btn.style.borderColor=btn._on?'#818cf8':'#1e2026';btn.style.background=btn._on?'#2c2f4a':'transparent';btn.style.color=btn._on?'#818cf8':'#6b7494';};
       return{idx,btn};
     });
+    const _noRecur=!!(prefill&&prefill.noRecur); // 룸 현황에서 추가 시 고정(반복) 불가
     function updateDayField(){
+      if(_noRecur){scheduleMode='single';dayF.style.display='none';modeF.style.display='none';return;}
       const show=scheduleMode==='recurring'&&lessonKind==='solo';
       dayF.style.display=show?'block':'none';
       modeF.style.display=(modeBtns.length&&modeWrap.parentElement&&modeF.dataset.avail==='1'&&lessonKind==='solo')?'block':'none';
