@@ -5989,8 +5989,8 @@ function renderPcSales(ct,acts){
   if(!pcSalStart){const n=new Date();pcSalStart=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-01';const l=new Date(n.getFullYear(),n.getMonth()+1,0);pcSalEnd=l.getFullYear()+'-'+String(l.getMonth()+1).padStart(2,'0')+'-'+String(l.getDate()).padStart(2,'0');}
   if(!pcSV)pcSV='all';
   ensurePtRecurringSlots();ensureGrpBillings();ensurePtBillings();
-  // 청구 대표 날짜(기간 필터/정렬용): 결제완료면 결제일, 미결제면 해당 월(당월이면 오늘, 지난달이면 말일)
-  function _billDateObj(bill){const parts=(bill.month||'').split('-').map(Number);const by=parts[0],bm=parts[1];if(!by||!bm)return new Date(bill.createdAt||0);const lastDay=new Date(by,bm,0).getDate();const t=new Date();const cur=(t.getFullYear()===by&&t.getMonth()+1===bm);return new Date(by,bm-1,cur?t.getDate():lastDay);}
+  // 청구 대표 날짜(기간 필터/정렬용): 결제완료면 결제일, 미결제면 등록월은 등록일, 그 외엔 해당 월 1일
+  function _billDateObj(bill){const parts=(bill.month||'').split('-').map(Number);const by=parts[0],bm=parts[1];if(!by||!bm)return new Date(bill.createdAt||0);if(bill.regStart&&bill.regStart.slice(0,7)===bill.month)return new Date(bill.regStart+'T00:00:00');return new Date(by,bm-1,1);}
   function _billDate(bill){return (bill.paid&&bill.paidDate)?new Date(bill.paidDate+'T00:00:00'):_billDateObj(bill);}
 
   const fb=ct.appendChild(Object.assign(document.createElement('div'),{className:'pc-fbar'}));
@@ -7265,10 +7265,10 @@ function ensureGrpBillings(){
           bill={id:'bill'+Date.now()+'_'+Math.random().toString(36).slice(2),
             memberId:mb.id,memberName:mb.name,planId:plan.id,
             groupClassId:plan.groupClassId,groupClassName:gc.name,
-            month,sessions,amount,monthlySessions:isMonthly?N:undefined,monthlyPrice:isMonthly?P:undefined,paid:false,paidDate:null,paymentMethod:null,createdAt:Date.now()};
+            month,sessions,amount,monthlySessions:isMonthly?N:undefined,monthlyPrice:isMonthly?P:undefined,regStart:plan.startDate||null,paid:false,paidDate:null,paymentMethod:null,createdAt:Date.now()};
           grpBillings.push(bill);
         } else if(!bill.paid){
-          bill.sessions=sessions;bill.amount=amount;if(isMonthly){bill.monthlySessions=N;bill.monthlyPrice=P;}
+          bill.sessions=sessions;bill.amount=amount;if(isMonthly){bill.monthlySessions=N;bill.monthlyPrice=P;}if(!bill.regStart)bill.regStart=plan.startDate||null;
         }
         ym.setMonth(ym.getMonth()+1);
       }
@@ -7313,11 +7313,11 @@ function ensurePtBillings(){
         if(!bill){
           bill={id:'ptbill'+Date.now()+'_'+Math.random().toString(36).slice(2),
             memberId:mb.id,memberName:mb.name,planId:plan.id,productName:plan.productName,
-            duration:plan.duration,month,sessions,pricePerSession:plan.pricePerSession||0,amount,
+            duration:plan.duration,month,sessions,pricePerSession:plan.pricePerSession||0,amount,regStart:plan.startDate||null,
             paid:false,paidDate:null,paymentMethod:null,createdAt:Date.now()};
           ptBillings.push(bill);
         } else if(!bill.paid){
-          bill.sessions=sessions;bill.amount=amount;
+          bill.sessions=sessions;bill.amount=amount;if(!bill.regStart)bill.regStart=plan.startDate||null;
         }
         ym.setMonth(ym.getMonth()+1);
       }
