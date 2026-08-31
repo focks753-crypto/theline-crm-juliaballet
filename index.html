@@ -4384,10 +4384,10 @@ const PC_NAV=[
   {id:'customers',label:'고객관리',icon:'',subs:[{id:'members',label:'고객 관리'},{id:'consult',label:'상담 관리'},{id:'consult_hist',label:'상담 내역'},{id:'noweek',label:'주간미수업'},{id:'nextweek',label:'차주미수업'}]},
   {id:'sales',label:'매출관리',icon:'',adminOnly:true,subs:[{id:'all',label:'매출내역'},{id:'bypkg',label:'상품별내역'},{id:'bypay',label:'결제수단별'},{id:'sessions',label:'세션로그'},{id:'ptbilling',label:'청구관리'},{id:'refund',label:'환불내역'}]},
   {id:'groupclass',label:'그룹수업',icon:'',subs:[{id:'month',label:'월간 현황'},{id:'config',label:'수업 설정',adminOnly:true},{id:'members',label:'회원 현황'}]},
-  {id:'settings',label:'센터설정',icon:'',subs:[{id:'staff',label:'직원관리',adminOnly:true},{id:'pkg',label:'상품관리',adminOnly:true},{id:'avail',label:'예약설정'}]},
   {id:'calendar',label:'개인레슨 일정',icon:''},
   {id:'rooms',label:'룸 현황',icon:''},
   {id:'bookings',label:'예약관리',icon:''},
+  {id:'settings',label:'센터설정',icon:'',subs:[{id:'staff',label:'직원관리',adminOnly:true},{id:'pkg',label:'상품관리',adminOnly:true},{id:'rooms',label:'룸 관리',adminOnly:true},{id:'avail',label:'예약설정'}]},
   {id:'analytics',label:'분석',icon:'',adminOnly:true},
 ];
 function _mk(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;}
@@ -4787,14 +4787,14 @@ function renderPcTrainerHome(ct,acts){
     // 나와
     html+='<div style="font-size:11px;font-weight:700;color:#3dc87a;margin:6px 0 3px;">나와의 수업</div><div>';
     if(!mineG.length&&!mineP.length)html+='<span style="font-size:12px;color:#3a3f58;">없음</span>';
-    mineG.forEach(g=>{html+=chip('🟡 '+g.label+(g.sched?' · '+g.sched:''),'#fbbf24','rgba(251,191,36,.12)',true);});
-    mineP.forEach(p=>{html+=chip('👤 개인레슨'+(p.nextTxt?' · 다음 '+p.nextTxt:'')+(p.count>1?' ('+p.count+'회 예정)':''),'#a5b4fc','rgba(129,140,248,.14)',true);});
+    mineG.forEach(g=>{html+=chip(g.label+(g.sched?' · '+g.sched:''),'#fbbf24','rgba(251,191,36,.12)',true);});
+    mineP.forEach(p=>{html+=chip('개인레슨'+(p.nextTxt?' · 다음 '+p.nextTxt:'')+(p.count>1?' ('+p.count+'회 예정)':''),'#a5b4fc','rgba(129,140,248,.14)',true);});
     html+='</div>';
     // 다른 강사와
     if(otherG.length||otherP.length){
       html+='<div style="font-size:11px;font-weight:700;color:#f0a5c0;margin:10px 0 3px;">다른 강사와의 수업</div><div>';
-      otherG.forEach(g=>{html+=chip('🟡 '+g.label+' · '+trName(g.trainerId),trColor(g.trainerId),'rgba(255,255,255,.05)');});
-      otherP.forEach(p=>{html+=chip('👤 '+trName(p.trainerId)+' 개인레슨'+(p.nextTxt?' · '+p.nextTxt:''),trColor(p.trainerId),'rgba(255,255,255,.05)');});
+      otherG.forEach(g=>{html+=chip(g.label+' · '+trName(g.trainerId),trColor(g.trainerId),'rgba(255,255,255,.05)');});
+      otherP.forEach(p=>{html+=chip(trName(p.trainerId)+' 개인레슨'+(p.nextTxt?' · '+p.nextTxt:''),trColor(p.trainerId),'rgba(255,255,255,.05)');});
       html+='</div>';
     }
     card.innerHTML=html;
