@@ -9102,8 +9102,8 @@ function openPcAddSchedule(dateStr,prefill){
     // 등록 방식 (개별 일정 / 고정수업)
     const modeF=box.appendChild(_f('등록 방식'));
     const modeWrap=modeF.appendChild(document.createElement('div'));modeWrap.style.cssText='display:flex;gap:8px;';
-    let scheduleMode='single';const modeBtns=[];
-    [{v:'single',l:'개별 일정'},{v:'recurring',l:'고정수업 (매주 반복)'}].forEach(m=>{
+    let scheduleMode='recurring';const modeBtns=[]; // 기본=고정수업, 하루만 원하면 단발 선택
+    [{v:'recurring',l:'고정수업 (매주 반복)'},{v:'single',l:'하루만 (단발)'}].forEach(m=>{
       const b=modeWrap.appendChild(document.createElement('button'));b.type='button';b.textContent=m.l;
       const on=scheduleMode===m.v;
       b.style.cssText='flex:1;padding:9px;border-radius:9px;border:1.5px solid '+(on?'#818cf8':'#1e2026')+';background:'+(on?'rgba(129,140,248,.1)':'#0f1117')+';color:'+(on?'#818cf8':'#6b7494')+';font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;';
@@ -9145,7 +9145,8 @@ function openPcAddSchedule(dateStr,prefill){
       selectedPlanId=ptPlans[0].id;plS.value=selectedPlanId;
       function syncModeToPlan(){
         const plan=ptPlans.find(p=>p.id===plS.value);
-        scheduleMode=(plan&&plan.recurring&&(plan.recurring.days||[]).length)?'recurring':'single';
+        // 기본 고정: 기존 고정수업이면 고정, 새로 등록이면 고정 기본(룸현황 경유 noRecur는 단발)
+        scheduleMode=(plan&&plan.recurring&&(plan.recurring.days||[]).length)?'recurring':(_noRecur?'single':'recurring');
         modeBtns.forEach(({b:b2,v})=>{const on2=scheduleMode===v;b2.style.borderColor=on2?'#818cf8':'#1e2026';b2.style.background=on2?'rgba(129,140,248,.1)':'#0f1117';b2.style.color=on2?'#818cf8':'#6b7494';});
         dayBtns.forEach(({idx,btn})=>{const on=!!(plan&&plan.recurring&&(plan.recurring.days||[]).includes(idx));btn._on=on;btn.style.borderColor=on?'#818cf8':'#1e2026';btn.style.background=on?'#2c2f4a':'transparent';btn.style.color=on?'#818cf8':'#6b7494';});
         if(plan&&plan.recurring&&plan.recurring.time)timeS.value=plan.recurring.time;
