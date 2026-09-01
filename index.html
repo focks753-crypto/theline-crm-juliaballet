@@ -569,24 +569,6 @@ body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-se
 /* ── 작은 화면(폰/태블릿) 반응형: 사이드바 드로어 + 콘텐츠 재배치 ── */
 .pc-hamb{display:none;width:38px;height:38px;border-radius:8px;border:1px solid #1e2026;background:#0f1117;color:#c4cde8;font-size:19px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0;font-family:inherit;}
 .pc-side-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:4999;display:none;}
-@media(max-width:860px){
-  .pc-side{position:fixed;left:0;top:0;bottom:0;z-index:5000;transform:translateX(-100%);box-shadow:2px 0 20px rgba(0,0,0,.5);}
-  .pc-side.open{transform:translateX(0);}
-  .pc-side-backdrop.show{display:block;}
-  .pc-hamb{display:flex;}
-  .pc-topbar{padding:0 14px;gap:8px;}
-  .pc-topbar-ttl{font-size:15px;}
-  .pc-content{padding:14px 12px;}
-  .pc-dash-g4{grid-template-columns:repeat(2,1fr);gap:10px;}
-  .pc-dash-g2{grid-template-columns:1fr;gap:10px;}
-  .pc-tw{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-  #pc-subtabbar{overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
-  .pcm-row2{grid-template-columns:1fr;}
-}
-@media(max-width:480px){
-  .pc-dash-g4{grid-template-columns:1fr 1fr;}
-  .pc-content{padding:12px 10px;}
-}
 #pc-layout{display:none;width:100vw;height:100vh;background:#0a0c10;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden;}
 .pc-side{width:220px;flex-shrink:0;background:#0f1117;border-right:1px solid #1e2026;display:flex;flex-direction:column;height:100vh;overflow-y:hidden;}
 .pc-logo{padding:18px;border-bottom:1px solid #1e2026;user-select:none;display:flex;align-items:center;}
@@ -623,10 +605,10 @@ body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-se
 .pc-dash-g4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px;}
 .pc-dash-g3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;}
 .pc-dash-g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
-.pc-card{background:#111318;border:1px solid #1e2026;border-radius:12px;padding:18px 20px;}
-.pc-card-ttl{font-size:12px;color:#6b7494;font-weight:600;margin-bottom:8px;}
-.pc-card-val{font-size:26px;font-weight:800;color:#e2e8f0;line-height:1;}
-.pc-card-sub{font-size:11px;color:#35383f;margin-top:5px;}
+.pc-card{background:#111318;border:1px solid #1e2026;border-radius:12px;padding:18px 20px;word-break:keep-all;}
+.pc-card-ttl{font-size:12px;color:#6b7494;font-weight:600;margin-bottom:8px;word-break:keep-all;}
+.pc-card-val{font-size:26px;font-weight:800;color:#e2e8f0;line-height:1;white-space:nowrap;}
+.pc-card-sub{font-size:11px;color:#35383f;margin-top:5px;word-break:keep-all;}
 .pc-bar{height:5px;background:#1a1c22;border-radius:3px;overflow:hidden;margin-top:12px;}
 .pc-bar-fill{height:100%;border-radius:3px;transition:width .6s cubic-bezier(.4,0,.2,1);}
 /* SUB TABS */
@@ -841,6 +823,32 @@ input[type=time]::-webkit-calendar-picker-indicator{
 input[type=date]::-webkit-calendar-picker-indicator:hover,
 input[type=time]::-webkit-calendar-picker-indicator:hover{opacity:1;}
 
+/* ── 작은 화면(폰/태블릿) 반응형 — 기본 규칙 뒤에 두어 확실히 적용 ── */
+@media(max-width:860px){
+  .pc-side{position:fixed;left:0;top:0;bottom:0;z-index:5000;transform:translateX(-100%);box-shadow:2px 0 20px rgba(0,0,0,.5);}
+  .pc-side.open{transform:translateX(0);}
+  .pc-side-backdrop.show{display:block;}
+  .pc-hamb{display:flex;}
+  .pc-topbar{padding:0 14px;gap:8px;}
+  .pc-topbar-ttl{font-size:15px;}
+  .pc-content{padding:14px 12px;}
+  .pc-dash-g4{grid-template-columns:repeat(2,1fr);gap:10px;}
+  .pc-dash-g3{grid-template-columns:1fr;gap:10px;}
+  .pc-dash-g2{grid-template-columns:1fr;gap:10px;}
+  .pc-tw{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  #pc-subtabbar{overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
+  .pcm-row2{grid-template-columns:1fr;}
+  .pc-card{padding:13px 14px;}
+  .pc-card-val{font-size:21px;}
+  .pc-card-ttl{margin-bottom:5px;}
+  .pc-room-tbl th,.pc-room-tbl td{min-width:46px!important;font-size:9.5px!important;padding:3px 2px!important;}
+  .pc-room-tbl .pc-room-time{min-width:34px!important;font-size:9px!important;padding:2px 3px!important;}
+  .pc-room-tbl{min-width:0!important;}
+}
+@media(max-width:480px){
+  .pc-dash-g4{grid-template-columns:1fr 1fr;}
+  .pc-content{padding:12px 10px;}
+}
 </style>
 
 <!-- Firebase SDK -->
@@ -4893,14 +4901,14 @@ function renderPcRooms(ct,acts){
   // 안내
   ct.appendChild(Object.assign(document.createElement('div'),{textContent:'빈 칸을 누르면 그 룸·시간으로 수업을 추가하고, 예약된 칸을 누르면 상세를 볼 수 있어요.'})).style.cssText='font-size:12px;color:#6b7494;margin-bottom:10px;';
   const tw=ct.appendChild(_mk('div'));tw.style.cssText='overflow:auto;border:1px solid #1e2026;border-radius:10px;max-height:72vh;';
-  const tbl=tw.appendChild(document.createElement('table'));tbl.style.cssText='border-collapse:collapse;width:100%;min-width:'+(64+rs.length*92)+'px;';
+  const tbl=tw.appendChild(document.createElement('table'));tbl.className='pc-room-tbl';tbl.style.cssText='border-collapse:collapse;width:100%;min-width:'+(64+rs.length*92)+'px;';
   const hr=tbl.appendChild(document.createElement('thead')).appendChild(document.createElement('tr'));
-  const th0=hr.appendChild(document.createElement('th'));th0.textContent='시간';th0.style.cssText='position:sticky;left:0;top:0;background:#151821;color:#6b7494;font-size:11px;padding:8px;border:1px solid #23262f;min-width:52px;z-index:3;';
+  const th0=hr.appendChild(document.createElement('th'));th0.className='pc-room-time';th0.textContent='시간';th0.style.cssText='position:sticky;left:0;top:0;background:#151821;color:#6b7494;font-size:11px;padding:8px;border:1px solid #23262f;min-width:52px;z-index:3;';
   rs.forEach(r=>{const th=hr.appendChild(document.createElement('th'));th.textContent=r.name;th.style.cssText='position:sticky;top:0;background:#151821;color:#c4cde8;font-size:12px;font-weight:700;padding:8px 6px;border:1px solid #23262f;min-width:86px;z-index:2;';});
   const tbody=tbl.appendChild(document.createElement('tbody'));
   times.forEach(t=>{
     const tr=tbody.appendChild(document.createElement('tr'));
-    const tdT=tr.appendChild(document.createElement('td'));tdT.textContent=_mh(t);tdT.style.cssText='position:sticky;left:0;background:#0f1117;color:'+(t%60===0?'#8b93a7':'#3a3f58')+';font-size:11px;font-weight:'+(t%60===0?'700':'400')+';padding:3px 8px;border:1px solid #1a1c22;text-align:center;white-space:nowrap;z-index:1;';
+    const tdT=tr.appendChild(document.createElement('td'));tdT.className='pc-room-time';tdT.textContent=_mh(t);tdT.style.cssText='position:sticky;left:0;background:#0f1117;color:'+(t%60===0?'#8b93a7':'#3a3f58')+';font-size:11px;font-weight:'+(t%60===0?'700':'400')+';padding:3px 8px;border:1px solid #1a1c22;text-align:center;white-space:nowrap;z-index:1;';
     rs.forEach(r=>{
       if(covered[r.id][t]&&!startMap[r.id][t])return;
       if(startMap[r.id][t]){
