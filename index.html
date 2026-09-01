@@ -560,11 +560,32 @@ body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-se
 /* ═══════════════════════════════════════════════════════
    TheLine CRM — PC Layout (≥960px)
 ══════════════════════════════════════════════════════════ */
-@media(min-width:960px){
+@media(min-width:1px){
   .hdr,.tabs,.pg,#fab,.day-wrap,#tlist,#gate,#app-wrap,#sr{display:none!important;}
   #pc-layout{display:flex!important;}
   #pcg{display:flex;}
   html,body{overflow:hidden!important;}
+}
+/* ── 작은 화면(폰/태블릿) 반응형: 사이드바 드로어 + 콘텐츠 재배치 ── */
+.pc-hamb{display:none;width:38px;height:38px;border-radius:8px;border:1px solid #1e2026;background:#0f1117;color:#c4cde8;font-size:19px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0;font-family:inherit;}
+.pc-side-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:4999;display:none;}
+@media(max-width:860px){
+  .pc-side{position:fixed;left:0;top:0;bottom:0;z-index:5000;transform:translateX(-100%);box-shadow:2px 0 20px rgba(0,0,0,.5);}
+  .pc-side.open{transform:translateX(0);}
+  .pc-side-backdrop.show{display:block;}
+  .pc-hamb{display:flex;}
+  .pc-topbar{padding:0 14px;gap:8px;}
+  .pc-topbar-ttl{font-size:15px;}
+  .pc-content{padding:14px 12px;}
+  .pc-dash-g4{grid-template-columns:repeat(2,1fr);gap:10px;}
+  .pc-dash-g2{grid-template-columns:1fr;gap:10px;}
+  .pc-tw{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  #pc-subtabbar{overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
+  .pcm-row2{grid-template-columns:1fr;}
+}
+@media(max-width:480px){
+  .pc-dash-g4{grid-template-columns:1fr 1fr;}
+  .pc-content{padding:12px 10px;}
 }
 #pc-layout{display:none;width:100vw;height:100vh;background:#0a0c10;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden;}
 .pc-side{width:220px;flex-shrink:0;background:#0f1117;border-right:1px solid #1e2026;display:flex;flex-direction:column;height:100vh;overflow-y:hidden;}
@@ -1298,7 +1319,7 @@ function showApp(){
   const pcg=document.getElementById('pcg');if(pcg)pcg.style.display='none';
   const gate=document.getElementById('gate');if(gate)gate.style.cssText='display:none!important;';
   const aw=document.getElementById('app-wrap');if(aw)aw.classList.add('show');
-  const isPc=window.innerWidth>=960;
+  const isPc=true; // PC 레이아웃을 모든 화면(폰 포함)에서 사용 — 작은 화면은 반응형(사이드바 드로어)
   // PC: 먼저 레이아웃/네비게이션을 띄워서 렌더 오류가 나도 화면은 나오게
   if(isPc){
     const pl=document.getElementById('pc-layout');
@@ -4169,12 +4190,14 @@ function openAddSheet_mobile(dateStr){
   </aside>
   <div class="pc-main">
     <div class="pc-topbar">
+      <button class="pc-hamb" onclick="togglePcSide()" aria-label="메뉴">☰</button>
       <div class="pc-topbar-ttl" id="pc-ttl">홈</div>
       <div id="pc-acts" style="display:flex;gap:8px;"></div>
     </div>
     <div id="pc-subtabbar" style="display:none;border-bottom:1px solid #1e2026;background:#0f1117;flex-shrink:0;"></div>
     <div class="pc-content" id="pc-ct"></div>
   </div>
+  <div class="pc-side-backdrop" id="pc-side-backdrop" onclick="closePcSide()"></div>
 </div>
 
 <script>
@@ -4417,6 +4440,19 @@ const PC_NAV=[
   {id:'analytics',label:'분석',icon:'',adminOnly:true},
 ];
 function _mk(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;}
+// 작은 화면 사이드바 드로어 토글 (인라인 !important로 확실히 적용)
+function _setPcSide(open){
+  const s=document.querySelector('.pc-side');const b=document.getElementById('pc-side-backdrop');if(!s)return;
+  const mobile=window.matchMedia('(max-width:860px)').matches;
+  s.classList.toggle('open',open);
+  if(mobile)s.style.setProperty('transform',open?'translateX(0)':'translateX(-100%)','important');
+  else s.style.removeProperty('transform');
+  if(b)b.classList.toggle('show',open&&mobile);
+}
+function togglePcSide(){const s=document.querySelector('.pc-side');_setPcSide(!(s&&s.classList.contains('open')));}
+function closePcSide(){_setPcSide(false);}
+// 큰 화면으로 돌아오면 드로어 인라인 상태 초기화(사이드바 정상 노출)
+window.addEventListener('resize',()=>{if(!window.matchMedia('(max-width:860px)').matches){const s=document.querySelector('.pc-side');if(s){s.classList.remove('open');s.style.removeProperty('transform');}const b=document.getElementById('pc-side-backdrop');if(b)b.classList.remove('show');}});
 function initPcNav(){
   const nav=document.getElementById('pc-nav');if(!nav)return;
   if(!nav._built){
@@ -4435,7 +4471,7 @@ function initPcNav(){
         nav._col=new Set();
         pcV=item.id;pcSV=item.subs?(item.subs.find(s=>!s.adminOnly||isAdminUser())||item.subs[0]).id:'';
         if(item.id==='customers'&&pcSV==='members')custSV='all';
-        initPcNav();renderPcContent();
+        initPcNav();renderPcContent();if(!item.subs)closePcSide();
       };
       if(item.subs){
         const sub=nav.appendChild(_mk('div','pc-nav-sub'));
@@ -4444,7 +4480,7 @@ function initPcNav(){
           if(s.adminOnly&&!isAdminUser())return;
           const si=sub.appendChild(_mk('div','pc-nav-sub-item',s.label));
           si.dataset.id=s.id;
-          si.onclick=e=>{e.stopPropagation();nav._col=nav._col||new Set();nav._col.delete(item.id);pcSV=s.id;if(s.id==='members')custSV='all';initPcNav();renderPcContent();};
+          si.onclick=e=>{e.stopPropagation();nav._col=nav._col||new Set();nav._col.delete(item.id);pcSV=s.id;if(s.id==='members')custSV='all';initPcNav();renderPcContent();closePcSide();};
         });
       }
     });
@@ -8939,7 +8975,6 @@ function pcgLogin(){
 }
 function initPcLayout(){
   const pcg=document.getElementById('pcg');
-  if(window.innerWidth<960){if(pcg)pcg.style.display='none';return;}
   const pl=document.getElementById('pc-layout');if(!pl)return;
   pl.style.display='flex';
   if(typeof codeVerified!=='undefined'&&codeVerified){
