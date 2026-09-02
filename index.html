@@ -4641,9 +4641,9 @@ function renderPcHome(ct,acts){
     const pps=plan.pricePerSession||0;
     slots.forEach(s=>{if(s.date&&s.date.slice(0,7)===_cm&&s.date>_todayS&&slotMemberEntries(s).some(x=>x.memberId===mb.id&&x.planId===plan.id)){mTotal+=pps;mBillCnt++;}});
   }));
-  // 선불 회차권(그룹·개인) 판매액 — 판매일(addedAt) 기준으로 이번달 매출에 합산 (매출관리 legacyPaid와 동일 기준)
-  members.forEach(mb=>(mb.plans||[]).filter(p=>p.prepaid&&(p.totalPrice||0)>0&&!p.refunded).forEach(plan=>{const pd=new Date(plan.addedAt||0);if(pd.getFullYear()===y&&pd.getMonth()===m2){mTotal+=plan.totalPrice||0;mBillCnt++;}}));
-  refunds.forEach(r=>{if(!r.processedAt)return;const d=new Date(r.processedAt);if(d.getFullYear()===y&&d.getMonth()===m2)mTotal-=r.refundAmount||0;});
+  // 선불 회차권(그룹·개인) 판매액 — 판매일(addedAt) 기준으로 이번달 매출에 합산. 환불돼도 판매월 매출은 유지(환불액은 환불월에 차감)
+  members.forEach(mb=>(mb.plans||[]).filter(p=>p.prepaid&&(p.totalPrice||0)>0).forEach(plan=>{const pd=new Date(plan.addedAt||0);if(pd.getFullYear()===y&&pd.getMonth()===m2){mTotal+=plan.totalPrice||0;mBillCnt++;}}));
+  refunds.forEach(r=>{if(!r.processedAt||r.type==='transfer')return;const d=new Date(r.processedAt);if(d.getFullYear()===y&&d.getMonth()===m2)mTotal-=r.refundAmount||0;});
 
   // 성비
   const maleC=members.filter(m=>m.gender==='남').length;
@@ -6128,7 +6128,7 @@ function renderPcSales(ct,acts){
   const sd=new Date(pcSalStart),ed=new Date(pcSalEnd);ed.setHours(23,59,59);const rows=[];let total=0;
   members.forEach(mb=>{if(pcSalTr&&mb.trainerId!==pcSalTr)return;const tr2=trainers.find(t=>t.id===mb.trainerId);(mb.plans||[]).forEach(p=>{const pd=new Date(p.addedAt||0);if(pd<sd||pd>ed)return;rows.push({mb,p,tr2,ds:pd.toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'}),tm:String(pd.getHours()).padStart(2,'0')+':'+String(pd.getMinutes()).padStart(2,'0')});total+=p.totalPrice||0;});});
   const sd2=new Date(pcSalStart),ed2=new Date(pcSalEnd);ed2.setHours(23,59,59);
-  const refundTotal=refunds.filter(r=>{if(!r.processedAt)return false;const d=new Date(r.processedAt);return d>=sd2&&d<=ed2;}).reduce((s,r)=>s+(r.refundAmount||0),0);
+  const refundTotal=refunds.filter(r=>{if(!r.processedAt||r.type==='transfer')return false;const d=new Date(r.processedAt);return d>=sd2&&d<=ed2;}).reduce((s,r)=>s+(r.refundAmount||0),0);
   // ── 매출내역: 청구(billing) 기준 (결제완료+미결제, 그룹+개인레슨) ──
   const allBillItems=[...grpBillings.map(b=>({kind:'group',b,name:b.groupClassName||'-'})),...ptBillings.filter(b=>(b.sessions||0)>0).map(b=>({kind:'pt',b,name:b.productName||'개인레슨'}))]
     .filter(({b})=>{if(!pcSalTr)return true;const mb=members.find(m=>m.id===b.memberId);return mb&&mb.trainerId===pcSalTr;})
@@ -6136,7 +6136,7 @@ function renderPcSales(ct,acts){
   const paidBillItems=allBillItems.filter(x=>x.b.paid);
   const unpaidBills=allBillItems.filter(x=>!x.b.paid&&(x.b.amount||0)>0);
   // 레거시 선불 직접판매(청구에 안 걸린 실판매 plan) — 판매plan(grp_sal_/pt_sal_)은 청구에서 이미 표시되므로 제외
-  const legacyPaid=[];members.forEach(mb=>{if(pcSalTr&&mb.trainerId!==pcSalTr)return;(mb.plans||[]).forEach(p=>{if((p.totalPrice||0)<=0||p.refunded||p.grpBillId||p.ptBillId)return;const pd=new Date(p.addedAt||0);if(pd<sd||pd>ed)return;legacyPaid.push({mb,p});});});
+  const legacyPaid=[];members.forEach(mb=>{if(pcSalTr&&mb.trainerId!==pcSalTr)return;(mb.plans||[]).forEach(p=>{if((p.totalPrice||0)<=0||p.grpBillId||p.ptBillId)return;const pd=new Date(p.addedAt||0);if(pd<sd||pd>ed)return;legacyPaid.push({mb,p});});});
   const paidTotal=paidBillItems.reduce((s,x)=>s+(x.b.amount||0),0)+legacyPaid.reduce((s,x)=>s+(x.p.totalPrice||0),0);
   const unpaidTotal=unpaidBills.reduce((s,x)=>s+(x.b.amount||0),0);
   // 예정(미래) 개인레슨 — 레슨일정에 등록됐지만 아직 수업 안 한(오늘 이후) 레슨. 총매출에 합산.
@@ -8668,8 +8668,10 @@ function renderPcAnalytics(ct){
   const monthKeys=[];for(let i=5;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);monthKeys.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'));}
   const byMonth={};monthKeys.forEach(k=>byMonth[k]={paid:0,unpaid:0});
   [...grpBillings,...ptBillings].forEach(b=>{if(byMonth[b.month]){if(b.paid)byMonth[b.month].paid+=b.amount||0;else byMonth[b.month].unpaid+=b.amount||0;}});
-  // 선불 회차권(그룹·개인) 판매액 — 판매월(addedAt)에 결제완료 매출로 합산
-  members.forEach(mb=>(mb.plans||[]).forEach(p=>{if(!p.prepaid||(p.totalPrice||0)<=0||p.refunded)return;const _pk=(new Date(p.addedAt||0));const _mk=_pk.getFullYear()+'-'+String(_pk.getMonth()+1).padStart(2,'0');if(byMonth[_mk])byMonth[_mk].paid+=p.totalPrice||0;}));
+  // 선불 회차권(그룹·개인) 판매액 — 판매월(addedAt)에 결제완료 매출로 합산(환불돼도 판매월 유지)
+  members.forEach(mb=>(mb.plans||[]).forEach(p=>{if(!p.prepaid||(p.totalPrice||0)<=0)return;const _pk=(new Date(p.addedAt||0));const _mk=_pk.getFullYear()+'-'+String(_pk.getMonth()+1).padStart(2,'0');if(byMonth[_mk])byMonth[_mk].paid+=p.totalPrice||0;}));
+  // 환불액 — 환불월에 차감 (판매월은 그대로, 순매출 = 판매 − 환불). 양도는 실 환불 아님 → 제외
+  refunds.forEach(r=>{if(!r.processedAt||r.type==='transfer')return;const d=new Date(r.processedAt);const _rk=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');if(byMonth[_rk])byMonth[_rk].paid-=r.refundAmount||0;});
   // ─ 이번달 종류별 ─
   const grpRev=grpBillings.filter(b=>b.month===cm).reduce((a,b)=>a+(b.amount||0),0);
   const ptRev=ptBillings.filter(b=>b.month===cm).reduce((a,b)=>a+(b.amount||0),0);
