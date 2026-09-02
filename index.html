@@ -884,10 +884,18 @@ function initFB(){
     if(!firebase.apps.length)firebase.initializeApp(cfg);
     db=firebase.firestore();
     console.log('Firebase 연결 성공 ✅');
-    // 익명 인증 — Firestore 보안 규칙이 request.auth != null을 요구하므로,
-    // 다른 데이터를 읽기 전에 인증이 끝날 때까지 기다린다 (경합 상태 방지).
+    // 인증 대기: 저장된 세션(센터 로그인)이 있으면 그걸 쓰고, 없을 때만 익명으로 폴백.
+    // (센터 계정으로 로그인해 둔 기기는 재접속 시 익명으로 덮어쓰지 않도록)
     if(firebase.auth){
-      return firebase.auth().signInAnonymously().catch(e=>console.warn('익명 로그인 실패:',e.message));
+      try{firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);}catch(e){}
+      return new Promise(resolve=>{
+        let done=false;const fin=()=>{if(!done){done=true;resolve();}};
+        firebase.auth().onAuthStateChanged(u=>{
+          if(u){fin();}
+          else{firebase.auth().signInAnonymously().catch(e=>console.warn('익명 로그인 실패:',e.message)).then(fin,fin);}
+        });
+        setTimeout(fin,4000); // 안전장치: 인증 상태가 안 오면 4초 후 진행
+      });
     }
   }catch(e){console.warn('Firebase 초기화 실패:',e.message);}
   return Promise.resolve();
@@ -901,13 +909,12 @@ function initFB(){
   <div style="background:#fff;border-radius:24px;padding:48px 32px 40px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.1);text-align:center;">
     <img src="logo.png" style="width:220px;max-height:140px;object-fit:contain;display:block;margin:0 auto 28px;">
     <p class="gate-hint" style="font-size:13px;font-weight:600;color:#888;margin:0 0 20px;letter-spacing:-.1px;">센터 코드로 로그인</p>
-    <input id="mobile-pin-input" type="password" inputmode="numeric" maxlength="4"
-      style="width:100%;padding:16px 18px;border:1.5px solid #e2e8f0;border-radius:12px;font-size:26px;text-align:center;outline:none;letter-spacing:14px;color:#1a202c;background:#f7f8fa;font-family:inherit;box-sizing:border-box;transition:border-color .15s,background .15s;"
-      oninput="this.value=this.value.replace(/[^0-9]/g,'');if(this.value.length===4)submitMobilePin();"
+    <input id="mobile-pin-input" type="password" autocomplete="current-password"
+      style="width:100%;padding:16px 18px;border:1.5px solid #e2e8f0;border-radius:12px;font-size:20px;text-align:center;outline:none;letter-spacing:4px;color:#1a202c;background:#f7f8fa;font-family:inherit;box-sizing:border-box;transition:border-color .15s,background .15s;"
       onkeydown="if(event.key==='Enter')submitMobilePin()"
       onfocus="this.style.borderColor='#818cf8';this.style.background='#fff';"
       onblur="this.style.borderColor='#e2e8f0';this.style.background='#f7f8fa';"
-      placeholder="····">
+      placeholder="센터 비밀번호">
     <div id="mobile-pin-error" style="color:#fc8181;font-size:12px;min-height:18px;margin:10px 0 4px;"></div>
     <button onclick="submitMobilePin()"
       style="width:100%;padding:16px;border:none;border-radius:12px;background:#111;color:#fff;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px;">
@@ -921,8 +928,8 @@ function initFB(){
   <div class="pcg-card">
     <img src="logo.png" class="pcg-logo" alt="TheLine CRM">
     <p class="pcg-label">센터 코드 입력</p>
-    <input id="pcg-input" class="pcg-input" type="password" inputmode="numeric" maxlength="4" placeholder="····"
-      oninput="this.value=this.value.replace(/[^0-9]/g,'');if(this.value.length===4)pcgLogin();"
+    <input id="pcg-input" class="pcg-input" type="password" autocomplete="current-password" placeholder="센터 비밀번호"
+      style="letter-spacing:4px;font-size:18px;"
       onkeydown="if(event.key==='Enter')pcgLogin()"
       onfocus="this.style.borderColor='#333';this.style.background='#fff';"
       onblur="this.style.borderColor='#e0e0e0';this.style.background='#fafafa';">
@@ -1172,7 +1179,18 @@ let consultations=ld('jbog10_cs',[]);
 let products=ld('jbog10_pr',[]);
 let refunds=ld('jbog10_rf',[]);
 let centerCode=localStorage.getItem('jbog10_cc')||'0000';
+const CENTER_EMAIL='center@juliaballet.kr'; // 센터 공용 Firebase 계정(진짜 로그인). 게이트 입력값=이 계정의 비밀번호
 let codeVerified=false; // 매번 코드 입력 필요
+// 센터 로그인: 게이트 비밀번호로 Firebase 실제 인증 → 성공 시 데이터 재로드 후 앱 표시
+async function centerLogin(pw){
+  if(typeof firebase==='undefined'||!firebase.auth)throw new Error('auth-unavailable');
+  await firebase.auth().signInWithEmailAndPassword(CENTER_EMAIL,pw);
+  // 잠금(익명 비활성) 이후에도 동작하도록, 로그인 성공 후 데이터 재로드
+  try{await loadFromFirebase();
+    trainers=ld('jbog10_tr',[]);slots=normSlots(ld('jbog10_sl',[]));members=ld('jbog10_mb',[]);notices=ld('jbog10_nt',[]);packages=ld('jbog10_pkg',[]);consultations=ld('jbog10_cs',[]);products=ld('jbog10_pr',[]);refunds=ld('jbog10_rf',[]);groupClasses=ld('jbog10_gcl',[]);
+    curUser=ld('jbog10_cu',null);if(curUser&&!trainers.find(t=>t.id===curUser)){curUser=null;}
+  }catch(e){}
+}
 let curUser=ld('jbog10_cu',null);
 let weekOff=0;let calView='week';
 let groupClasses=ld('jbog10_gcl',[]);let grpSessMap={};let loadedGrpMonths=new Set();let grpLoaded=false;let grpMonthOff=0;let grpV='month';let grpSelDate='';
@@ -1324,7 +1342,9 @@ function submitMobilePin(){
   const inp=document.getElementById('mobile-pin-input');
   const err=document.getElementById('mobile-pin-error');
   if(!inp)return;
-  if(inp.value===centerCode){
+  if(err)err.textContent='확인 중...';
+  centerLogin(inp.value).then(()=>{
+    if(err)err.textContent='';
     codeVerified=true;
     // 게이트 강제 숨김
     const gate=document.getElementById('gate');
@@ -1332,10 +1352,10 @@ function submitMobilePin(){
     const pcg=document.getElementById('pcg');
     if(pcg){pcg.style.cssText='display:none!important;';}
     showApp();
-  } else {
-    if(err){err.textContent='코드가 올바르지 않습니다.';setTimeout(()=>{err.textContent='';},2000);}
+  }).catch(e=>{
+    if(err){err.textContent='코드가 올바르지 않습니다.';setTimeout(()=>{err.textContent='';},2500);}
     inp.value='';setTimeout(()=>inp.focus(),100);
-  }
+  });
 }
 function _safe(label,fn){try{fn();}catch(e){console.error('[showApp:'+label+']',e);try{window.dispatchEvent(new ErrorEvent('error',{message:'['+label+'] '+e.message,error:e}));}catch(_){}}}
 function showApp(){
@@ -8999,17 +9019,19 @@ function pcgLogin(){
   const err=document.getElementById('pcg-err');
   if(!inp)return;
   const val=inp.value;
-  const cc=localStorage.getItem('jbog10_cc')||'0000';
-  if(val===cc){
+  const btnBusy=(t)=>{if(err)err.textContent=t;};
+  btnBusy('확인 중...');
+  centerLogin(val).then(()=>{
+    if(err)err.textContent='';
     codeVerified=true;
     const gate=document.getElementById('gate');
     if(gate){gate.style.cssText='display:none!important;';}
     hidePcGate();
     showApp();
-  } else {
-    if(err){err.textContent='센터 코드가 올바르지 않습니다.';setTimeout(()=>{err.textContent='';},2000);}
+  }).catch(e=>{
+    if(err){err.textContent='센터 코드가 올바르지 않습니다.';setTimeout(()=>{err.textContent='';},2500);}
     inp.value='';inp.focus();
-  }
+  });
 }
 function initPcLayout(){
   const pcg=document.getElementById('pcg');
