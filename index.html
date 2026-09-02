@@ -573,7 +573,10 @@ body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-se
 .pc-side{width:220px;flex-shrink:0;background:#0f1117;border-right:1px solid #1e2026;display:flex;flex-direction:column;height:100vh;overflow-y:hidden;}
 .pc-logo{padding:18px;border-bottom:1px solid #1e2026;user-select:none;display:flex;align-items:center;}
 .pc-logo img{width:100%;height:auto;max-height:36px;object-fit:contain;display:block;}
-.pc-nav{padding:10px 8px;flex:1;}
+.pc-nav{padding:10px 8px;flex:1;overflow-y:auto;min-height:0;}
+.pc-cname{padding:11px 18px;font-size:13px;font-weight:800;color:#c4cde8;letter-spacing:-.2px;border-bottom:1px solid #1e2026;flex-shrink:0;user-select:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pc-cname.admin{cursor:pointer;}
+.pc-cname.admin:hover{color:#818cf8;}
 .pc-nav-item{display:flex;align-items:center;gap:9px;padding:10px 14px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;color:#6b7494;transition:all .15s;margin-bottom:2px;white-space:nowrap;}
 .pc-nav-item:hover{background:#16181f;color:#c4cde8;}
 .pc-nav-item.on{background:#1c1f28;color:#fff;font-weight:700;}
@@ -585,7 +588,7 @@ body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-se
 .pc-nav-sub-item{padding:7px 14px;border-radius:6px;cursor:pointer;font-size:13px;color:#4a5068;transition:all .15s;}
 .pc-nav-sub-item:hover{background:#16181f;color:#c4cde8;}
 .pc-nav-sub-item.on{color:#818cf8;font-weight:700;}
-.pc-side-foot{padding:10px 8px;border-top:1px solid #1e2026;}
+.pc-side-foot{padding:10px 8px;border-top:1px solid #1e2026;flex-shrink:0;}
 .pc-user-btn{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;}
 .pc-user-btn:hover{background:#16181f;}
 .pc-user-av{width:28px;height:28px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;}
@@ -1352,6 +1355,9 @@ function getMemberWarn(mb){return(mb.plans||[]).some(p=>getPlanRemain(p)>0&&getP
 function isAdminUser(){if(!curUser)return false;const tr=trainers.find(t=>t.id===curUser);return tr&&tr.role==='관리자';}
 // 보기 전용 가드: 강사 로그인(curUser) 안 됐으면 수정/삭제/등록 불가
 function requireLogin(){if(curUser)return true;alert('보기 전용 모드입니다.\n수정하려면 먼저 로그인해 주세요.\n(왼쪽 아래 프로필 → 로그인)');return false;}
+// 센터 이름(사이드바 로고 아래) — 저장값 jbog10_cn(동기화), 관리자는 클릭해서 변경
+function updCenterName(){const el=document.getElementById('pc-cname');if(!el)return;el.textContent=ld('jbog10_cn','줄리아발레아카데미-반포');if(isAdminUser())el.classList.add('admin');else el.classList.remove('admin');}
+function editCenterName(){if(!isAdminUser())return;if(!requireLogin())return;const cur=ld('jbog10_cn','줄리아발레아카데미-반포');const v=prompt('센터 이름을 입력하세요',cur);if(v===null)return;const nv=v.trim();if(!nv)return;sv('jbog10_cn',nv);updCenterName();}
 function canEditSlot(s){return isAdminUser()||(curUser&&curUser===s.trainerId);}
 function canAccessTrainer(tid){return isAdminUser()||(curUser&&curUser===tid);}
 // 일정(레슨/그룹) 표시 범위: 관리자 또는 미로그인 → 전체, 로그인한 강사 → 자기 것만
@@ -4247,6 +4253,7 @@ function openAddSheet_mobile(dateStr){
 <div id="pc-layout">
   <aside class="pc-side">
     <div class="pc-logo"><img src="logo-white.png" alt="TheLine CRM"></div>
+    <div class="pc-cname" id="pc-cname" onclick="editCenterName()"></div>
     <div class="pc-nav" id="pc-nav"></div>
     <div class="pc-side-foot">
       <div class="pc-user-btn" onclick="openPcLogin();" id="pc-ubtn">
@@ -4588,6 +4595,7 @@ function updatePcUser(){
 function renderPcContent(){
   const ct=document.getElementById('pc-ct'),ttl=document.getElementById('pc-ttl'),acts=document.getElementById('pc-acts');
   const _vo=document.getElementById('pc-viewonly');if(_vo)_vo.style.display=curUser?'none':'flex';
+  updCenterName();
   const stbar=document.getElementById('pc-subtabbar');if(!ct)return;ct.innerHTML='';if(acts)acts.innerHTML='';if(stbar){stbar.innerHTML='';stbar.style.display='none';}
   ct.classList.remove('pc-content-anim');void ct.offsetHeight;ct.classList.add('pc-content-anim');
   updatePcUser();
