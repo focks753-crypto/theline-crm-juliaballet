@@ -5997,7 +5997,7 @@ function renderPcSessions(ct,acts){
     const memo=s.type==='상담'?'💬 '+(s.memo||'-'):s.type==='OT'?('OT'+(s.memo?' · '+s.memo:'')):plan?(plan.productName||plan.sessions+'회권'):(s.memo||'-');
     // 레슨 강사료: 진행된(오늘까지) 수업만, (세션 강사 × 레슨종류 × 수업시간)별 페이
     let ptPay=null;
-    if(isLesson&&s.date<=todayStr){
+    if(isLesson&&s.date<=todayStr&&s.roomId){ // 룸 배정된 레슨만 강사료 발생
       const trn=trainers.find(t=>t.id===s.trainerId);
       const dur=plan?plan.duration:null;
       const tbl=trn?(lkind==='duet'?trn.duetPay:lkind==='trio'?trn.trioPay:trn.durationPay):null;
@@ -6014,6 +6014,7 @@ function renderPcSessions(ct,acts){
       const ds=fmtD(dd);if(ds>todayStr)continue;
       const sess=grpSessMap[gc.id+'_'+ds];
       if(sess&&sess.status==='cancelled')continue;
+      if(!sess||!sess.roomId)continue; // 룸 배정된(실제 진행) 세션만 강사료·세션 집계 — 룸 빼면 사라짐
       const attended=((sess&&sess.reservations)||[]).length;
       const t2=(gc.time||'').slice(0,5);
       // 메인 강사 (이 날짜 페이 오버라이드 있으면 우선)
