@@ -7427,6 +7427,14 @@ function ensureGrpBillings(){
       }
     });
   });
+  // 해지된 플랜의 미결제 청구 자동 정리(어느 해지 경로든): 해지월 이후 미결제 제거, 해지일 없는 완전해지는 미결제 전부 제거
+  grpBillings=grpBillings.filter(b=>{
+    if(b.paid)return true;
+    const mb=members.find(m=>m.id===b.memberId);const plan=mb&&(mb.plans||[]).find(p=>p.id===b.planId);
+    if(!plan||plan.status!=='cancelled')return true;
+    const cm=plan.cancelledDate?plan.cancelledDate.slice(0,7):'';
+    return cm?!(b.month>cm):false;
+  });
   sv('jbog10_gbl',grpBillings);
 }
 async function svGrpBilling(bill){
@@ -7475,6 +7483,14 @@ function ensurePtBillings(){
         ym.setMonth(ym.getMonth()+1);
       }
     });
+  });
+  // 해지된 개인레슨 플랜의 미결제 청구 자동 정리: 해지월 이후 미결제 제거, 해지일 없는 완전해지는 미결제 전부 제거
+  ptBillings=ptBillings.filter(b=>{
+    if(b.paid)return true;
+    const mb=members.find(m=>m.id===b.memberId);const plan=mb&&(mb.plans||[]).find(p=>p.id===b.planId);
+    if(!plan||plan.status!=='cancelled')return true;
+    const cm=plan.cancelledDate?plan.cancelledDate.slice(0,7):'';
+    return cm?!(b.month>cm):false;
   });
   sv('jbog10_ptbl',ptBillings);
 }
@@ -7885,7 +7901,7 @@ function _renderBilling(ct){
   }
   // ── 그룹수업 구독 관리 ──
   const grpHdr=ct.appendChild(document.createElement('div'));grpHdr.style.cssText='margin-top:28px;margin-bottom:12px;font-size:13px;font-weight:700;color:#6b7494;';grpHdr.textContent='그룹수업 구독 관리';
-  const allGrpPlans=[];members.forEach(mb=>(mb.plans||[]).filter(p=>p.productType==='group').forEach(p=>{const gc=groupClasses.find(g=>g.id===p.groupClassId);const pps=p.pricePerSession||gc?.pricePerSession||0;const mSess=gc?calcMonthSessions(gc,curMonth):0;allGrpPlans.push({mb,plan:p,gcName:gc?gc.name:'?',monthlyAmt:pps*mSess});}));
+  const allGrpPlans=[];members.forEach(mb=>(mb.plans||[]).filter(p=>p.productType==='group'&&p.status!=='cancelled').forEach(p=>{const gc=groupClasses.find(g=>g.id===p.groupClassId);const pps=p.pricePerSession||gc?.pricePerSession||0;const mSess=gc?calcMonthSessions(gc,curMonth):0;allGrpPlans.push({mb,plan:p,gcName:gc?gc.name:'?',monthlyAmt:pps*mSess});}));
   if(!allGrpPlans.length){ct.appendChild(Object.assign(document.createElement('div'),{className:'sal-empty',textContent:'그룹 구독 내역이 없습니다.'}));}
   else{
     const stw=ct.appendChild(Object.assign(document.createElement('div'),{className:'pc-tw'}));const stbl=stw.appendChild(Object.assign(document.createElement('table'),{className:'pc-tbl'}));
@@ -7901,7 +7917,7 @@ function _renderBilling(ct){
   }
   // ── 개인레슨 등록 현황 ──
   const ptHdr=ct.appendChild(document.createElement('div'));ptHdr.style.cssText='margin-top:24px;margin-bottom:12px;font-size:13px;font-weight:700;color:#6b7494;';ptHdr.textContent='개인레슨 등록 현황';
-  const allPtPlans=[];members.forEach(mb=>(mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&!p.refunded).forEach(plan=>{const monthSess=getPtMemberMonthCompleted(mb.id,plan.id,curMonth);allPtPlans.push({mb,plan,monthSess});}));
+  const allPtPlans=[];members.forEach(mb=>(mb.plans||[]).filter(p=>p.billingMode==='postpaid'&&p.productType==='pt'&&!p.refunded&&p.status!=='cancelled').forEach(plan=>{const monthSess=getPtMemberMonthCompleted(mb.id,plan.id,curMonth);allPtPlans.push({mb,plan,monthSess});}));
   if(!allPtPlans.length){ct.appendChild(Object.assign(document.createElement('div'),{className:'sal-empty',textContent:'등록된 개인레슨이 없습니다.'}));return;}
   const stw2=ct.appendChild(Object.assign(document.createElement('div'),{className:'pc-tw'}));const stbl2=stw2.appendChild(Object.assign(document.createElement('table'),{className:'pc-tbl'}));
   const shr2=stbl2.appendChild(document.createElement('thead')).appendChild(document.createElement('tr'));['회원','연락처','상품','회당 요금','시작일','이번달 진행','상태','관리'].forEach(h=>shr2.appendChild(Object.assign(document.createElement('th'),{textContent:h})));
