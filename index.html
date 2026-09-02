@@ -1315,7 +1315,31 @@ function planUsedCount(plan){
   if(plan&&plan.productType==='group'&&plan.prepaid){const mb=members.find(m=>(m.plans||[]).some(p=>p&&p.id===plan.id));return mb?getGrpAttendedCount(mb.id,plan.groupClassId,plan.startDate):0;}
   return getPlanUsed(plan.id);
 }
-function getPlanRemain(plan){if(plan&&(plan.productType==='membership'||plan.billingMode==='postpaid'))return 0;return(plan.sessions||0)-planUsedCount(plan);}
+function getPlanRemain(plan){if(plan&&(plan.productType==='membership'||plan.billingMode==='postpaid'))return 0;return(plan.sessions||0)-planUsedCount(plan)+(plan.remainAdjust||0);}
+// 회차권 횟수 수정(관리자): 총 구매/현재 잔여를 직접 보정. 잔여는 remainAdjust 오프셋으로 저장(출석 자동차감 유지)
+function openPassAdjustModal(mb,plan,onDone){
+  const used=planUsedCount(plan);const curRemain=getPlanRemain(plan);
+  pcModal((box,close)=>{
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'회차권 횟수 수정'}));
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub',textContent:(mb.name||'')+' · '+(plan.productName||((plan.sessions||0)+'회권'))}));
+    const sum=box.appendChild(document.createElement('div'));
+    sum.style.cssText='background:#0f1117;border:1px solid #1e2026;border-radius:10px;padding:12px 14px;margin:8px 0 16px;font-size:12px;color:#c4cde8;line-height:1.9;';
+    sum.innerHTML='총 구매 <strong>'+(plan.sessions||0)+'회</strong> · 사용(출석) <strong>'+used+'회</strong> · 현재 잔여 <strong style="color:#3dc87a;">'+curRemain+'회</strong>';
+    const totF=box.appendChild(_f('총 구매 횟수',true));const totI=totF.appendChild(_inp('','number'));totI.value=plan.sessions||0;totI.min='0';
+    const remF=box.appendChild(_f('현재 잔여 횟수',true));const remI=remF.appendChild(_inp('','number'));remI.value=curRemain;
+    remF.appendChild(Object.assign(document.createElement('div'),{textContent:'실제 잔여로 맞춰 입력하세요. 이후 출석하면 여기서부터 자동으로 −1 됩니다.'})).style.cssText='font-size:11px;color:#3a3f58;margin-top:4px;line-height:1.6;';
+    const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='18px';
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
+      const newTot=parseInt(totI.value,10);const newRem=parseInt(remI.value,10);
+      if(isNaN(newTot)||newTot<0||isNaN(newRem)){alert('숫자를 입력해주세요.');return;}
+      plan.sessions=newTot;
+      plan.remainAdjust=newRem-(newTot-planUsedCount(plan)); // 잔여=newRem 이 되도록 오프셋 저장
+      sv('jbog10_mb',members);
+      close();if(onDone)onDone();
+    };
+  });
+}
 function planDaysLeft(plan){if(!plan||!plan.endDate)return null;return Math.ceil((new Date(plan.endDate)-new Date())/(1000*60*60*24));}
 function planRemLbl(plan){if(plan&&plan.billingMode==='postpaid')return '회당 '+(plan.pricePerSession||0).toLocaleString()+'원';if(plan&&plan.productType==='membership'){const dl=planDaysLeft(plan);return dl==null?'기간제':(dl>=0?('D-'+dl):'만료');}return '잔여 '+getPlanRemain(plan)+'회';}
 function planRemWarn(plan){if(plan&&plan.billingMode==='postpaid')return false;if(plan&&plan.productType==='membership'){const dl=planDaysLeft(plan);return dl!=null&&dl>=0&&dl<=14;}const r=getPlanRemain(plan);return r>=0&&r<=2;}
@@ -2549,7 +2573,7 @@ function renderMemView(ct){
     const topBtns=top.appendChild(el('div'));topBtns.style.cssText='display:flex;gap:5px;align-items:center;';
     topBtns.appendChild(mk('button','memeditbtn','회원수정')).onclick=()=>openEditMember(m.id);
     topBtns.appendChild(mk('button','memplanbtb','+ 현장판매')).onclick=()=>openPcPayment(m.id,null,null);
-    topBtns.appendChild(mk('button','mdel','×')).onclick=()=>{if(confirm(m.name+' 삭제?')){members=members.filter(x=>x.id!==m.id);sv('jbog10_mb',members);renderMem();}};
+    topBtns.appendChild(mk('button','mdel','×')).onclick=()=>{if(confirm(m.name+' 삭제?')){members=members.filter(x=>x.id!==m.id);sv('jbog10_mb',members);purgeMemberData(m.id);renderMem();}};
     const minfo=card.appendChild(el('div',''));minfo.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;';
     if(m.phone)minfo.appendChild(mk('div','mphone',m.phone));
     if(m.inflow){const ib=minfo.appendChild(mk('div','',m.inflow));ib.style.cssText='font-size:11px;color:#ce93d8;background:rgba(171,71,188,.12);padding:2px 7px;border-radius:5px;font-weight:600;';}
@@ -5470,7 +5494,7 @@ function renderMbDetailModal(box,close,mbId){
     const delB2=btmRow.appendChild(document.createElement('button'));
     delB2.style.cssText='padding:11px 14px;border-radius:9px;border:1px solid rgba(248,113,113,.3);background:transparent;color:#f87171;font-size:13px;cursor:pointer;font-family:inherit;';
     delB2.textContent='삭제';
-    delB2.onclick=()=>{if(confirm(mb.name+' 회원을 삭제하시겠습니까?')){members=members.filter(m=>m.id!==mbId);sv('jbog10_mb',members);close();renderMem();}};
+    delB2.onclick=()=>{if(confirm(mb.name+' 회원을 삭제하시겠습니까?')){members=members.filter(m=>m.id!==mbId);sv('jbog10_mb',members);purgeMemberData(mbId);close();renderMem();}};
     return;
   }
   // 2열: 왼쪽 정보 + 오른쪽 콘텐츠
@@ -5501,7 +5525,7 @@ function renderMbDetailModal(box,close,mbId){
   const delMbBtn=left.appendChild(document.createElement('button'));
   delMbBtn.style.cssText='width:100%;padding:10px;border-radius:8px;border:1px solid rgba(248,113,113,.3);background:transparent;color:#f87171;font-size:12px;font-weight:600;cursor:pointer;margin-top:6px;font-family:inherit;';
   delMbBtn.textContent='회원 삭제';
-  delMbBtn.onclick=()=>{if(confirm(mb.name+' 회원을 삭제하시겠습니까?')){members=members.filter(m=>m.id!==mbId);sv('jbog10_mb',members);close();renderPcContent();}};
+  delMbBtn.onclick=()=>{if(confirm(mb.name+' 회원을 삭제하시겠습니까?\n(관련 청구·매출 기록도 함께 삭제됩니다)')){members=members.filter(m=>m.id!==mbId);sv('jbog10_mb',members);purgeMemberData(mbId);close();renderPcContent();}};
 
   // 오른쪽
   const right=box.appendChild(document.createElement('div'));
@@ -6801,6 +6825,11 @@ function renderMbPlanCard(container, mb, p, box, close) {
     info.innerHTML=(gc?'<span style="color:#fbbf24;">'+escapeHtml(gc.name)+'</span><br>':'')
       +'선결제 '+(p.totalPrice||0).toLocaleString()+'원 · 회당 '+(p.pricePerSession||0).toLocaleString()+'원 ('+(p.paymentMethod||'-')+' · '+(p.paymentDate||'')+')<br>'
       +'잔여 <strong style="color:'+(rem>0?'#3dc87a':'#f87171')+';">'+rem+'/'+(p.sessions||0)+'회</strong> (사용 '+used+'회)';
+    if(isAdminUser()){
+      const adjB=card.appendChild(Object.assign(document.createElement('button'),{textContent:'횟수 수정'}));
+      adjB.style.cssText='margin-top:10px;padding:5px 12px;border-radius:6px;border:1px solid #2a3050;background:transparent;color:#818cf8;font-size:11px;font-weight:600;cursor:pointer;';
+      adjB.onclick=()=>openPassAdjustModal(mb,p,()=>renderMbDetailModal(box,close,mb.id));
+    }
     return;
   }
   // 그룹수업 월정액은 별도 카드
@@ -6908,6 +6937,12 @@ function renderMbPlanCard(container, mb, p, box, close) {
   const dateBtn = top.appendChild(document.createElement('button'));
   dateBtn.style.cssText = 'padding:4px 10px;border-radius:6px;border:1px solid #2a3050;background:transparent;color:#818cf8;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;';
   dateBtn.textContent = '결제 수정';
+  if(isAdminUser()){
+    const adjB2=top.appendChild(document.createElement('button'));
+    adjB2.style.cssText='padding:4px 10px;border-radius:6px;border:1px solid #2a3050;background:transparent;color:#818cf8;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;';
+    adjB2.textContent='횟수 수정';
+    adjB2.onclick=()=>openPassAdjustModal(mb,p,()=>renderMbDetailModal(box,close,mb.id));
+  }
   dateBtn.onclick = () => {
     const curDate = p.paymentDate || (p.addedAt ? new Date(p.addedAt).toISOString().slice(0,10) : new Date().toISOString().slice(0,10));
     const fieldStyle = 'width:100%;padding:11px 14px;border:1px solid #2a3050;border-radius:10px;background:#0d1117;color:#e2e8f0;font-size:14px;margin-bottom:16px;box-sizing:border-box;font-family:inherit;';
@@ -7382,6 +7417,20 @@ function openGrpCancelModal(mb,plan,onDone){
 // 활성 그룹플랜에서 이번 달 청구 자동 생성 (없으면 append)
 // 그룹수업 청구 = 실제 출석(getGrpMemberMonthUsed) 기반 후불. 개인레슨(ensurePtBillings)과 동일 패턴.
 // 미결제 달은 출석 수가 바뀔 때마다 금액을 최신화하고, 결제완료된 달은 건드리지 않음. 출석 0이면 청구를 만들지 않음.
+// 회원 삭제 시 관련 청구·환불도 함께 제거(고아 데이터 방지 → 대시보드/분석/청구관리에서 즉시 사라짐)
+function purgeMemberData(mbId){
+  const gRem=grpBillings.filter(b=>b.memberId===mbId);
+  const pRem=ptBillings.filter(b=>b.memberId===mbId);
+  grpBillings=grpBillings.filter(b=>b.memberId!==mbId);
+  ptBillings=ptBillings.filter(b=>b.memberId!==mbId);
+  if(typeof refunds!=='undefined'&&Array.isArray(refunds))refunds=refunds.filter(r=>r.memberId!==mbId);
+  if(typeof db!=='undefined'&&db){
+    gRem.forEach(b=>{if(b.id)db.collection('jbog10_gbl').doc(b.id).delete().catch(()=>{});});
+    pRem.forEach(b=>{if(b.id)db.collection('jbog10_ptbl').doc(b.id).delete().catch(()=>{});});
+  }
+  sv('jbog10_gbl',grpBillings);sv('jbog10_ptbl',ptBillings);
+  if(typeof refunds!=='undefined'&&Array.isArray(refunds))sv('jbog10_rf',refunds);
+}
 function ensureGrpBillings(){
   const today=new Date();const curMonth=_grpFmtD(today).slice(0,7);
   const _noDb=(typeof db==='undefined'||!db); // db 없으면(로컬) 전부 재집계, db면 로드된 월만
@@ -7427,13 +7476,15 @@ function ensureGrpBillings(){
       }
     });
   });
-  // 해지된 플랜의 미결제 청구 자동 정리(어느 해지 경로든): 해지월 이후 미결제 제거, 해지일 없는 완전해지는 미결제 전부 제거
+  // 미결제 청구 자가정리: 삭제된 회원/등록의 청구, 해지된 등록의 미결제는 자동 제거(결제완료 청구는 매출로 보존)
   grpBillings=grpBillings.filter(b=>{
-    if(b.paid)return true;
-    const mb=members.find(m=>m.id===b.memberId);const plan=mb&&(mb.plans||[]).find(p=>p.id===b.planId);
-    if(!plan||plan.status!=='cancelled')return true;
-    const cm=plan.cancelledDate?plan.cancelledDate.slice(0,7):'';
-    return cm?!(b.month>cm):false;
+    if(b.paid)return true;                       // 결제완료(=실매출)는 항상 보존
+    const mb=members.find(m=>m.id===b.memberId);
+    if(!mb)return false;                          // 삭제된 회원의 미결제 제거
+    const plan=(mb.plans||[]).find(p=>p.id===b.planId);
+    if(!plan)return false;                        // 삭제된 등록의 미결제 제거
+    if(plan.status==='cancelled')return false;    // 해지된 등록의 미결제 제거
+    return true;
   });
   sv('jbog10_gbl',grpBillings);
 }
@@ -7484,13 +7535,15 @@ function ensurePtBillings(){
       }
     });
   });
-  // 해지된 개인레슨 플랜의 미결제 청구 자동 정리: 해지월 이후 미결제 제거, 해지일 없는 완전해지는 미결제 전부 제거
+  // 미결제 청구 자가정리: 삭제된 회원/등록의 청구, 해지된 등록의 미결제는 자동 제거(결제완료는 매출로 보존)
   ptBillings=ptBillings.filter(b=>{
     if(b.paid)return true;
-    const mb=members.find(m=>m.id===b.memberId);const plan=mb&&(mb.plans||[]).find(p=>p.id===b.planId);
-    if(!plan||plan.status!=='cancelled')return true;
-    const cm=plan.cancelledDate?plan.cancelledDate.slice(0,7):'';
-    return cm?!(b.month>cm):false;
+    const mb=members.find(m=>m.id===b.memberId);
+    if(!mb)return false;
+    const plan=(mb.plans||[]).find(p=>p.id===b.planId);
+    if(!plan)return false;
+    if(plan.status==='cancelled')return false;
+    return true;
   });
   sv('jbog10_ptbl',ptBillings);
 }
