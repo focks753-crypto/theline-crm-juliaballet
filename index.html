@@ -1318,6 +1318,7 @@ function planUsedCount(plan){
 function getPlanRemain(plan){if(plan&&(plan.productType==='membership'||plan.billingMode==='postpaid'))return 0;return(plan.sessions||0)-planUsedCount(plan)+(plan.remainAdjust||0);}
 // 회차권 횟수 수정(관리자): 총 구매/현재 잔여를 직접 보정. 잔여는 remainAdjust 오프셋으로 저장(출석 자동차감 유지)
 function openPassAdjustModal(mb,plan,onDone){
+  if(!requireLogin())return;
   const used=planUsedCount(plan);const curRemain=getPlanRemain(plan);
   pcModal((box,close)=>{
     box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'회차권 횟수 수정'}));
@@ -1349,6 +1350,8 @@ function getMemberWarn(mb){return(mb.plans||[]).some(p=>getPlanRemain(p)>0&&getP
 
 // 권한: 로그인한 사람이 관리자 role인지
 function isAdminUser(){if(!curUser)return false;const tr=trainers.find(t=>t.id===curUser);return tr&&tr.role==='관리자';}
+// 보기 전용 가드: 강사 로그인(curUser) 안 됐으면 수정/삭제/등록 불가
+function requireLogin(){if(curUser)return true;alert('보기 전용 모드입니다.\n수정하려면 먼저 로그인해 주세요.\n(왼쪽 아래 프로필 → 로그인)');return false;}
 function canEditSlot(s){return isAdminUser()||(curUser&&curUser===s.trainerId);}
 function canAccessTrainer(tid){return isAdminUser()||(curUser&&curUser===tid);}
 // 일정(레슨/그룹) 표시 범위: 관리자 또는 미로그인 → 전체, 로그인한 강사 → 자기 것만
@@ -4259,6 +4262,7 @@ function openAddSheet_mobile(dateStr){
     <div class="pc-topbar">
       <button class="pc-hamb" onclick="togglePcSide()" aria-label="메뉴">☰</button>
       <div class="pc-topbar-ttl" id="pc-ttl">홈</div>
+      <div id="pc-viewonly" onclick="openPcLogin();" title="로그인하면 수정할 수 있어요" style="display:none;align-items:center;gap:5px;padding:4px 11px;border-radius:6px;background:rgba(246,173,85,.15);color:#f6ad55;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">👁 보기 전용 · 로그인</div>
       <div id="pc-acts" style="display:flex;gap:8px;"></div>
     </div>
     <div id="pc-subtabbar" style="display:none;border-bottom:1px solid #1e2026;background:#0f1117;flex-shrink:0;"></div>
@@ -4583,6 +4587,7 @@ function updatePcUser(){
 }
 function renderPcContent(){
   const ct=document.getElementById('pc-ct'),ttl=document.getElementById('pc-ttl'),acts=document.getElementById('pc-acts');
+  const _vo=document.getElementById('pc-viewonly');if(_vo)_vo.style.display=curUser?'none':'flex';
   const stbar=document.getElementById('pc-subtabbar');if(!ct)return;ct.innerHTML='';if(acts)acts.innerHTML='';if(stbar){stbar.innerHTML='';stbar.style.display='none';}
   ct.classList.remove('pc-content-anim');void ct.offsetHeight;ct.classList.add('pc-content-anim');
   updatePcUser();
@@ -5414,6 +5419,7 @@ function renderPcCust(ct,acts){
 // ── 선불 회차권 판매 (개인레슨 / 그룹수업) ────────────────────────────────
 // 등록 즉시 매출 + 잔여 N회. 개인레슨=슬롯 소진, 그룹=출석 소진. 결석/미체크는 소진 안 함(자연 이월)
 function openPcSellPass(mbId,onDone){
+  if(!requireLogin())return;
   const mb=members.find(m=>m.id===mbId);if(!mb)return;
   pcModal((box,close)=>{
     box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'선불 회차권 판매'}));
@@ -5494,7 +5500,7 @@ function renderMbDetailModal(box,close,mbId){
     const delB2=btmRow.appendChild(document.createElement('button'));
     delB2.style.cssText='padding:11px 14px;border-radius:9px;border:1px solid rgba(248,113,113,.3);background:transparent;color:#f87171;font-size:13px;cursor:pointer;font-family:inherit;';
     delB2.textContent='삭제';
-    delB2.onclick=()=>{if(confirm(mb.name+' 회원을 삭제하시겠습니까?')){members=members.filter(m=>m.id!==mbId);sv('jbog10_mb',members);purgeMemberData(mbId);close();renderMem();}};
+    delB2.onclick=()=>{if(!requireLogin())return;if(confirm(mb.name+' 회원을 삭제하시겠습니까?')){members=members.filter(m=>m.id!==mbId);sv('jbog10_mb',members);purgeMemberData(mbId);close();renderMem();}};
     return;
   }
   // 2열: 왼쪽 정보 + 오른쪽 콘텐츠
@@ -5525,7 +5531,7 @@ function renderMbDetailModal(box,close,mbId){
   const delMbBtn=left.appendChild(document.createElement('button'));
   delMbBtn.style.cssText='width:100%;padding:10px;border-radius:8px;border:1px solid rgba(248,113,113,.3);background:transparent;color:#f87171;font-size:12px;font-weight:600;cursor:pointer;margin-top:6px;font-family:inherit;';
   delMbBtn.textContent='회원 삭제';
-  delMbBtn.onclick=()=>{if(confirm(mb.name+' 회원을 삭제하시겠습니까?\n(관련 청구·매출 기록도 함께 삭제됩니다)')){members=members.filter(m=>m.id!==mbId);sv('jbog10_mb',members);purgeMemberData(mbId);close();renderPcContent();}};
+  delMbBtn.onclick=()=>{if(!requireLogin())return;if(confirm(mb.name+' 회원을 삭제하시겠습니까?\n(관련 청구·매출 기록도 함께 삭제됩니다)')){members=members.filter(m=>m.id!==mbId);sv('jbog10_mb',members);purgeMemberData(mbId);close();renderPcContent();}};
 
   // 오른쪽
   const right=box.appendChild(document.createElement('div'));
@@ -5621,6 +5627,7 @@ function renderMbTab(ct,mb,tab,box,close){
 
 // ── 이용권 추가 / 결제 (Image 4 참고) ────────────────────────────────────
 function openPcPayment(mbId,parentBox,parentClose){
+  if(!requireLogin())return;
   // 이미 열린 창이면 앞으로 가져오기
   const existOv=document.querySelector('[data-pay-modal]');
   if(existOv){existOv.style.zIndex=++_modalZ;return;}
@@ -6881,7 +6888,7 @@ function renderMbPlanCard(container, mb, p, box, close) {
     if(p.status!=='cancelled'){
       const cancelBtn=top.appendChild(Object.assign(document.createElement('button'),{textContent:'해지'}));
       cancelBtn.style.cssText='padding:4px 10px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:transparent;color:#f87171;font-size:11px;cursor:pointer;';
-      cancelBtn.onclick=()=>{if(!confirm('개인레슨 등록을 해지하시겠습니까?'))return;p.status='cancelled';p.cancelledDate=_grpFmtD(new Date());sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);};
+      cancelBtn.onclick=()=>{if(!requireLogin())return;if(!confirm('개인레슨 등록을 해지하시겠습니까?'))return;p.status='cancelled';p.cancelledDate=_grpFmtD(new Date());sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);};
     }
     const info=card.appendChild(document.createElement('div'));info.style.cssText='font-size:11px;color:#4a5068;line-height:1.9;';
     const curMonth=_grpFmtD(new Date()).slice(0,7);
@@ -7024,6 +7031,7 @@ function renderMbPlanCard(container, mb, p, box, close) {
 
 // 환불 모달
 function openPcRefund(mb, plan, parentBox, parentClose) {
+  if(!requireLogin())return;
   const used = getPlanUsed(plan.id);
   const rem = getPlanRemain(plan);
   const paid = plan.totalPrice || 0;
@@ -7391,6 +7399,7 @@ function grpMakeupOwed(memberId,gc){
 }
 // 그룹 구독 해지 (해지 시작일 선택). 그 날짜부터 유효하지 않고, 해지월 이후 청구 안 됨
 function openGrpCancelModal(mb,plan,onDone){
+  if(!requireLogin())return;
   const gc=groupClasses.find(g=>g.id===plan.groupClassId);
   pcModal((box,close)=>{
     box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'그룹수업 해지'}));
@@ -7726,6 +7735,7 @@ function _renderGrpBilling(ct){
         const pBtn=pmRow.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'결제완료'}));
         pBtn.style.cssText='padding:4px 10px;font-size:11px;color:#3dc87a;border-color:#3dc87a;white-space:nowrap;';
         pBtn.onclick=async()=>{
+          if(!requireLogin())return;
           const now2=new Date();const todayStr2=_grpFmtD(now2);
           bill.paid=true;bill.paidDate=todayStr2;bill.paymentMethod=pmSel.value;
           // ── 매출 발생: member.plans에 그룹 월결제 레코드 추가 ──
@@ -7924,6 +7934,7 @@ function _renderBilling(ct){
         const pBtn=pmRow.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'결제완료'}));
         pBtn.style.cssText='padding:4px 10px;font-size:11px;color:#3dc87a;border-color:#3dc87a;white-space:nowrap;';
         pBtn.onclick=async()=>{
+          if(!requireLogin())return;
           const now2=new Date();const todayStr2=_grpFmtD(now2);
           bill.paid=true;bill.paidDate=todayStr2;bill.paymentMethod=pmSel.value;
           if(mb&&bill.amount>0){
@@ -7979,7 +7990,7 @@ function _renderBilling(ct){
     const isCancelled=plan.status==='cancelled';const row=stb2.appendChild(document.createElement('tr'));if(isCancelled)row.style.opacity='0.5';
     [mb.name,mb.phone||'-',plan.productName||'-',(plan.pricePerSession||0).toLocaleString()+'원',plan.startDate||'-',monthSess+'회',isCancelled?('해지 ('+(plan.cancelledDate||'')+')'):'진행중'].forEach((v,i)=>{const td=row.appendChild(document.createElement('td'));td.textContent=v;if(i===6)td.style.color=isCancelled?'#f87171':'#3dc87a';if(i===2)td.style.cssText='color:#818cf8;font-size:12px;';});
     const atd=row.appendChild(document.createElement('td'));
-    if(!isCancelled){const cb=atd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'해지'}));cb.style.cssText='padding:4px 10px;font-size:11px;color:#f87171;border-color:#f87171;';cb.onclick=()=>{if(!confirm(mb.name+' 님의 개인레슨 등록을 해지하시겠습니까?'))return;plan.status='cancelled';plan.cancelledDate=_grpFmtD(new Date());sv('jbog10_mb',members);renderPcContent();};}
+    if(!isCancelled){const cb=atd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'해지'}));cb.style.cssText='padding:4px 10px;font-size:11px;color:#f87171;border-color:#f87171;';cb.onclick=()=>{if(!requireLogin())return;if(!confirm(mb.name+' 님의 개인레슨 등록을 해지하시겠습니까?'))return;plan.status='cancelled';plan.cancelledDate=_grpFmtD(new Date());sv('jbog10_mb',members);renderPcContent();};}
     else{const rb=atd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'재등록'}));rb.style.cssText='padding:4px 10px;font-size:11px;color:#3dc87a;border-color:#3dc87a;';rb.onclick=()=>{if(!confirm(mb.name+' 님의 개인레슨을 재등록하시겠습니까?'))return;plan.status='active';plan.cancelledDate=null;sv('jbog10_mb',members);renderPcContent();};}
   });
 }
@@ -8240,6 +8251,7 @@ function _renderGrpMembers(ct){
 }
 
 function openGrpClassModal(gc,onSaved){
+  if(!requireLogin())return;
   const DAY_NS=['일','월','화','수','목','금','토'];
   pcModal((box,close)=>{
     box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:gc?'수업 수정':'그룹 수업 추가'}));
@@ -8445,6 +8457,7 @@ function openGrpSessionModal(gc,date,sess,prefill){
     // 새 모델: 기본 출석(등록=풀 청구). 이 버튼을 누르면 "결석" 표시 → 회당 차감
     // 3단계 순환: 미체크 → 출석 → 결석 → 미체크. 결석(차감)만 청구 차감
     async function cycleAttend(mb){
+      if(!requireLogin())return;
       const s=grpSessMap[gc.id+'_'+date]||{classId:gc.id,date,status:'active',reservations:[],absentees:[],attended:[]};
       s.attended=s.attended||[];s.absentees=s.absentees||[];
       const inAtt=s.attended.some(a=>a.memberId===mb.id);
@@ -8456,6 +8469,7 @@ function openGrpSessionModal(gc,date,sess,prefill){
     }
     // 결석 → 보강(이월) 전환: makeup 플래그 토글. 보강이면 청구 차감 안 하고 보강 크레딧 적립
     async function toggleMakeup(mb){
+      if(!requireLogin())return;
       const s=grpSessMap[gc.id+'_'+date];if(!s||!s.absentees)return;
       const a=s.absentees.find(x=>x.memberId===mb.id);if(!a)return;
       a.makeup=!a.makeup;
@@ -9196,6 +9210,7 @@ function openPcDayView(ds){
 }
 
 function openPcAddSchedule(dateStr,prefill){
+  if(!requireLogin())return;
   const DAY_AS=['일','월','화','수','목','금','토'];
   const d=dateStr?new Date(dateStr+'T00:00:00'):new Date();
   const selDate=dateStr||(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'));
@@ -9438,6 +9453,7 @@ function openPcSlotDetail(slotId){
     editForm.style.display='none';
 
     function showEditForm(){
+      if(!requireLogin())return;
       editForm.innerHTML='';editForm.style.display='block';infoCard.style.display='none';
 
       const r2=editForm.appendChild(document.createElement('div'));r2.className='pcm-row2';
