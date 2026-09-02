@@ -9117,8 +9117,10 @@ function openPcAddSchedule(dateStr,prefill){
     roomF.appendChild(Object.assign(document.createElement('div'),{textContent:'같은 시간 사용 중인 룸은 (사용중)으로 표시되어 선택할 수 없어요.'})).style.cssText='font-size:11px;color:#3a3f58;margin-top:4px;';
     function _curDurMin(){const mb=mbS.value?members.find(m=>m.id===mbS.value):null;const pl=(mb&&typeof selectedPlanId!=='undefined'&&selectedPlanId)?(mb.plans||[]).find(p=>p.id===selectedPlanId):null;if(pl){if(pl.duration)return pl.duration;const pr=(typeof products!=='undefined'?products:[]).find(x=>x.id===pl.productId);if(pr&&pr.duration)return pr.duration;}return 50;}
     function refreshRooms(){fillRoomSelect(roomS,dateI.value,_hm(timeS.value),_curDurMin(),roomS.value||'',null);}
-    dateI.addEventListener('change',refreshRooms);
+    function refreshTimes(){fillTimeSelect(timeS,dateI.value,roomS.value,_curDurMin(),timeS.value,null);}
+    dateI.addEventListener('change',()=>{refreshRooms();refreshTimes();});
     timeS.addEventListener('change',refreshRooms);
+    roomS.addEventListener('change',refreshTimes);
 
     const tyF=box.appendChild(_f('일정 유형',true));
     const tyWrap=tyF.appendChild(document.createElement('div'));
@@ -9210,7 +9212,7 @@ function openPcAddSchedule(dateStr,prefill){
         dayBtns.forEach(({idx,btn})=>{const on=!!(plan&&plan.recurring&&(plan.recurring.days||[]).includes(idx));btn._on=on;btn.style.borderColor=on?'#818cf8':'#1e2026';btn.style.background=on?'#2c2f4a':'transparent';btn.style.color=on?'#818cf8':'#6b7494';});
         if(plan&&plan.recurring&&plan.recurring.time)timeS.value=plan.recurring.time;
         updateDayField();
-        if(typeof refreshRooms==='function')refreshRooms();
+        if(typeof refreshRooms==='function'){refreshRooms();refreshTimes();}
       }
       plS.onchange=()=>{selectedPlanId=plS.value;syncModeToPlan();};
       syncModeToPlan();
@@ -9232,11 +9234,11 @@ function openPcAddSchedule(dateStr,prefill){
       tySel.onchange=updatePlans;
       updatePlans();
     }
-    mbS.onchange=()=>{updateTypes();refreshRooms();};
+    mbS.onchange=()=>{updateTypes();refreshRooms();refreshTimes();};
     updateTypes();
     if(prefill&&prefill.time)timeS.value=prefill.time;
-    refreshRooms();
-    if(prefill&&prefill.roomId){roomS.value=prefill.roomId;}
+    refreshRooms();refreshTimes();
+    if(prefill&&prefill.roomId){roomS.value=prefill.roomId;refreshTimes();}
 
     const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='20px';
     btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
@@ -9344,7 +9346,11 @@ function openPcSlotDetail(slotId){
       // 룸(방) — 사용 중 룸은 선택 불가(자기 일정 제외)
       const rmF=editForm.appendChild(_f('룸(방)'));const rmS=rmF.appendChild(_sel([]));rmS.style.width='100%';
       function _refreshEditRooms(){fillRoomSelect(rmS,dtI.value,_hm(tmS.value),slotDurationMin(s),s.roomId||'',s.id);}
-      _refreshEditRooms();dtI.addEventListener('change',_refreshEditRooms);tmS.addEventListener('change',_refreshEditRooms);
+      function _refreshEditTimes(){fillTimeSelect(tmS,dtI.value,rmS.value,slotDurationMin(s),tmS.value,s.id);}
+      _refreshEditRooms();_refreshEditTimes();
+      dtI.addEventListener('change',()=>{_refreshEditRooms();_refreshEditTimes();});
+      tmS.addEventListener('change',_refreshEditRooms);
+      rmS.addEventListener('change',_refreshEditTimes);
 
       // 수업권 선택
       if(mb&&(mb.plans||[]).length){
