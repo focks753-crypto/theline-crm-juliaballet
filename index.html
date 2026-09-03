@@ -5498,7 +5498,19 @@ function renderMbDetailModal(box,close,mbId){
     box.appendChild(Object.assign(document.createElement('div'),{textContent:'이용권'})).style.cssText='font-size:11px;font-weight:700;color:#4a5068;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;';
     const plans=mb.plans||[];
     if(!plans.length){const emp=box.appendChild(document.createElement('div'));emp.textContent='등록된 이용권 없음';emp.style.cssText='background:#0f1117;border:1px dashed #1e2026;border-radius:10px;padding:20px;text-align:center;color:#2a2d45;font-size:13px;margin-bottom:12px;';}
-    plans.forEach(p=>renderMbPlanCard(box,mb,p,box,close));
+    plans.forEach(p=>{
+      renderMbPlanCard(box,mb,p,box,close);
+      // 비활성(지난·해지·만료) 이용권엔 '이력 삭제' 버튼
+      if(!(!p.refunded&&isPlanActive(p))){
+        const card=box.lastElementChild;
+        if(card){
+          const delRow=card.appendChild(document.createElement('div'));delRow.style.cssText='display:flex;justify-content:flex-end;margin-top:8px;';
+          const delBtn=delRow.appendChild(Object.assign(document.createElement('button'),{textContent:'이력 삭제'}));
+          delBtn.style.cssText='padding:5px 12px;border-radius:6px;border:1px solid rgba(248,113,113,.45);background:transparent;color:#f87171;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;';
+          delBtn.onclick=()=>{if(!requireLogin())return;if(!confirm('이 내역을 삭제할까요?\n('+(p.productName||'상품')+' · 되돌릴 수 없음)'))return;mb.plans=(mb.plans||[]).filter(x=>x!==p);if(p.id){grpBillings=grpBillings.filter(b=>!(b.planId===p.id&&!b.paid));ptBillings=ptBillings.filter(b=>!(b.planId===p.id&&!b.paid));sv('jbog10_gbl',grpBillings);sv('jbog10_ptbl',ptBillings);}sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);};
+        }
+      }
+    });
     const addBtn=box.appendChild(document.createElement('button'));
     addBtn.className='pcdp-add-btn';addBtn.textContent='+ 이용권 추가하기 (현장판매)';
     addBtn.onclick=()=>openPcPayment(mb.id,box,close);
@@ -5605,6 +5617,7 @@ function renderMbTab(ct,mb,tab,box,close){
           const delBtn=delRow.appendChild(Object.assign(document.createElement('button'),{textContent:'이력 삭제'}));
           delBtn.style.cssText='padding:5px 12px;border-radius:6px;border:1px solid rgba(248,113,113,.45);background:transparent;color:#f87171;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;';
           delBtn.onclick=()=>{
+            if(!requireLogin())return;
             if(!confirm('이 내역을 삭제할까요?\n('+(p.productName||'상품')+' · 되돌릴 수 없음)'))return;
             mb.plans=(mb.plans||[]).filter(x=>x!==p);
             if(p.id){grpBillings=grpBillings.filter(b=>!(b.planId===p.id&&!b.paid));ptBillings=ptBillings.filter(b=>!(b.planId===p.id&&!b.paid));sv('jbog10_gbl',grpBillings);sv('jbog10_ptbl',ptBillings);}
@@ -6297,7 +6310,11 @@ function renderPcSales(ct,acts){
                 const mb=members.find(m=>m.id===(r.memberId||bill.memberId));
                 if(mb){
                   const plan=(mb.plans||[]).find(p=>p.id===bill.planId);
-                  if(plan&&bill.paid){plan.noBillMonths=[...new Set([...(plan.noBillMonths||[]),bill.month])];}
+                  if(plan&&r.billKind==='group'){
+                    // 그룹수업 매출내역 삭제 = 구독 해지 처리(그 달부터 청구 중단·재집계 방지)
+                    plan.status='cancelled';
+                    if(!plan.cancelledDate)plan.cancelledDate=(bill.month||_grpFmtD(new Date()).slice(0,7))+'-01';
+                  } else if(plan&&bill.paid){plan.noBillMonths=[...new Set([...(plan.noBillMonths||[]),bill.month])];}
                   mb.plans=(mb.plans||[]).filter(p=>r.billKind==='group'?p.grpBillId!==bill.id:p.ptBillId!==bill.id);
                   sv('jbog10_mb',members);
                 }
