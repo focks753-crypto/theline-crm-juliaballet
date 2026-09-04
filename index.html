@@ -5508,7 +5508,7 @@ function renderMbDetailModal(box,close,mbId){
           const delRow=card.appendChild(document.createElement('div'));delRow.style.cssText='display:flex;justify-content:flex-end;margin-top:8px;';
           const delBtn=delRow.appendChild(Object.assign(document.createElement('button'),{textContent:'이력 삭제'}));
           delBtn.style.cssText='padding:5px 12px;border-radius:6px;border:1px solid rgba(248,113,113,.45);background:transparent;color:#f87171;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;';
-          delBtn.onclick=()=>{if(!requireLogin())return;if(!confirm('이 내역을 삭제할까요?\n('+(p.productName||'상품')+' · 되돌릴 수 없음)'))return;mb.plans=(mb.plans||[]).filter(x=>x!==p);if(p.id){grpBillings=grpBillings.filter(b=>!(b.planId===p.id&&!b.paid));ptBillings=ptBillings.filter(b=>!(b.planId===p.id&&!b.paid));sv('jbog10_gbl',grpBillings);sv('jbog10_ptbl',ptBillings);}sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);};
+          delBtn.onclick=()=>{if(!requireLogin())return;if(!confirm('이 내역을 삭제할까요?\n('+(p.productName||'상품')+' · 되돌릴 수 없음)'))return;const cm=members.find(m=>m.id===mb.id)||mb;cm.plans=(cm.plans||[]).filter(x=>p.id?x.id!==p.id:x!==p);if(p.id){grpBillings=grpBillings.filter(b=>!(b.planId===p.id&&!b.paid));ptBillings=ptBillings.filter(b=>!(b.planId===p.id&&!b.paid));sv('jbog10_gbl',grpBillings);sv('jbog10_ptbl',ptBillings);}sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);};
         }
       }
     });
@@ -5621,7 +5621,9 @@ function renderMbTab(ct,mb,tab,box,close){
             if(!requireLogin())return;
             if(!confirm('이 내역을 삭제할까요?\n('+(p.productName||'상품')+' · 되돌릴 수 없음)'))return;
             window.__mbHistOpen=true; // 삭제 후에도 지난내역 목록 펼침 유지
-            mb.plans=(mb.plans||[]).filter(x=>x!==p);
+            // 실시간 동기화로 members가 교체됐을 수 있으므로 현재 배열에서 ID로 삭제(참조X)
+            const cm=members.find(m=>m.id===mb.id)||mb;
+            cm.plans=(cm.plans||[]).filter(x=>p.id?x.id!==p.id:x!==p);
             if(p.id){grpBillings=grpBillings.filter(b=>!(b.planId===p.id&&!b.paid));ptBillings=ptBillings.filter(b=>!(b.planId===p.id&&!b.paid));sv('jbog10_gbl',grpBillings);sv('jbog10_ptbl',ptBillings);}
             sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);
           };
