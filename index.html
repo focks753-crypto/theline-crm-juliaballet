@@ -5472,6 +5472,7 @@ function openPcSellPass(mbId,onDone){
 }
 // ── 회원 상세 모달 (Image 3 참고) ────────────────────────────────────────
 function openPcMemberDetail(mbId){
+  window.__mbHistOpen=false; // 새로 열 땐 지난내역 접힘부터
   const close=pcModal((box,c)=>{
     box.style.cssText+=';padding:0;overflow:hidden;display:flex;width:860px;max-height:85vh;';
     renderMbDetailModal(box,c,mbId);
@@ -5604,9 +5605,9 @@ function renderMbTab(ct,mb,tab,box,close){
       const toggle=dd.appendChild(document.createElement('button'));
       toggle.style.cssText='width:100%;display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-radius:10px;border:1px solid #1e2026;background:#0f1117;color:#8b93a7;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;';
       const bodyEl=dd.appendChild(document.createElement('div'));bodyEl.style.cssText='margin-top:10px;display:none;';
-      let ddOpen=false;
+      let ddOpen=window.__mbHistOpen||false;
       const upDd=()=>{toggle.innerHTML='<span>지난 · 해지 · 만료 내역 <span style="color:#f87171;">'+inactive.length+'</span></span><span style="font-size:11px;color:#6b7494;font-weight:600;">'+(ddOpen?'▲ 접기':'▼ 펼치기')+'</span>';bodyEl.style.display=ddOpen?'block':'none';};
-      toggle.onclick=()=>{ddOpen=!ddOpen;upDd();};
+      toggle.onclick=()=>{ddOpen=!ddOpen;window.__mbHistOpen=ddOpen;upDd();};
       upDd();
       inactive.forEach(p=>{
         renderMbPlanCard(bodyEl,mb,p,box,close);
@@ -5619,6 +5620,7 @@ function renderMbTab(ct,mb,tab,box,close){
           delBtn.onclick=()=>{
             if(!requireLogin())return;
             if(!confirm('이 내역을 삭제할까요?\n('+(p.productName||'상품')+' · 되돌릴 수 없음)'))return;
+            window.__mbHistOpen=true; // 삭제 후에도 지난내역 목록 펼침 유지
             mb.plans=(mb.plans||[]).filter(x=>x!==p);
             if(p.id){grpBillings=grpBillings.filter(b=>!(b.planId===p.id&&!b.paid));ptBillings=ptBillings.filter(b=>!(b.planId===p.id&&!b.paid));sv('jbog10_gbl',grpBillings);sv('jbog10_ptbl',ptBillings);}
             sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);
