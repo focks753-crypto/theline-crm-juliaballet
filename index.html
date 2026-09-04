@@ -925,6 +925,7 @@ function initFB(){
       style="width:100%;padding:16px;border:none;border-radius:12px;background:#111;color:#fff;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px;">
       로그인
     </button>
+    <button onclick="showAddHomeGuide()" style="width:100%;margin-top:12px;padding:12px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;color:#555;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">📱 홈 화면에 앱으로 추가하는 법</button>
   </div>
 </div>
 
@@ -940,6 +941,7 @@ function initFB(){
       onblur="this.style.borderColor='#e0e0e0';this.style.background='#fafafa';">
     <div id="pcg-err" class="pcg-err"></div>
     <button class="pcg-btn" onclick="pcgLogin()">로그인</button>
+    <button onclick="showAddHomeGuide()" style="width:100%;margin-top:10px;padding:11px;border:1px solid #e0e0e0;border-radius:10px;background:transparent;color:#888;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;">📱 홈 화면에 앱으로 추가하는 법</button>
   </div>
 </div>
 
@@ -1358,6 +1360,37 @@ function getMemberWarn(mb){return(mb.plans||[]).some(p=>getPlanRemain(p)>0&&getP
 function isAdminUser(){if(!curUser)return false;const tr=trainers.find(t=>t.id===curUser);return tr&&tr.role==='관리자';}
 // 보기 전용 가드: 강사 로그인(curUser) 안 됐으면 수정/삭제/등록 불가
 function requireLogin(){if(curUser)return true;alert('보기 전용 모드입니다.\n수정하려면 먼저 로그인해 주세요.\n(왼쪽 아래 프로필 → 로그인)');return false;}
+// 홈 화면에 추가 안내 (아이폰 Safari / 안드로이드 Chrome / 카카오톡 인앱브라우저 감지)
+function showAddHomeGuide(){
+  const ua=navigator.userAgent||'';
+  const isIOS=/iphone|ipad|ipod/i.test(ua)||(/Macintosh/i.test(ua)&&'ontouchend'in document);
+  const isAnd=/android/i.test(ua);
+  const isKakao=/kakaotalk/i.test(ua);
+  const url=location.href.split('#')[0];
+  let ov=document.getElementById('a2h-ov');if(ov)ov.remove();
+  ov=document.createElement('div');ov.id='a2h-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:18px;';
+  ov.onclick=e=>{if(e.target===ov)ov.remove();};
+  const iosSteps='<ol style="margin:0;padding-left:20px;font-size:14px;line-height:2;color:#e2e8f0;"><li>화면 아래 <b>공유 버튼</b> ( ⬆️ 네모+위 화살표 ) 탭</li><li><b>"홈 화면에 추가"</b> 선택</li><li>오른쪽 위 <b>추가</b> 탭</li></ol>';
+  const andSteps='<ol style="margin:0;padding-left:20px;font-size:14px;line-height:2;color:#e2e8f0;"><li>오른쪽 위 <b>⋮ 메뉴</b> 탭</li><li><b>"홈 화면에 추가"</b> (또는 "앱 설치") 선택</li><li><b>추가</b> 탭</li></ol>';
+  const iosBlk='<div style="margin-bottom:14px;"><div style="font-size:13px;font-weight:800;color:#818cf8;margin-bottom:8px;">🍎 아이폰 (Safari)</div>'+iosSteps+'</div>';
+  const andBlk='<div style="margin-bottom:4px;"><div style="font-size:13px;font-weight:800;color:#3dc87a;margin-bottom:8px;">🤖 안드로이드 (Chrome)</div>'+andSteps+'</div>';
+  let html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div style="font-size:17px;font-weight:800;color:#e2e8f0;">📱 홈 화면에 앱으로 추가</div><button id="a2h-x" style="background:#232734;border:none;color:#8892aa;width:30px;height:30px;border-radius:50%;font-size:18px;cursor:pointer;line-height:1;">×</button></div>';
+  html+='<div style="font-size:12px;color:#8892aa;margin-bottom:16px;line-height:1.6;">추가하면 앱 아이콘으로 바로 열 수 있어요 (매번 링크 안 눌러도 됨).</div>';
+  if(isKakao){
+    html+='<div style="background:#2a1e0a;border:1px solid #6b4e12;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.7;color:#fbbf24;">⚠️ 지금 <b>카카오톡 안</b>에서 열려 있어요. 여기선 홈 화면 추가가 안 됩니다.<br>먼저 '+(isIOS?'<b>Safari</b>로':'<b>Chrome</b>으로')+' 열어주세요 →<br>'+(isIOS?'오른쪽 아래 <b>공유/더보기</b> → <b>"Safari로 열기"</b>':'오른쪽 위 <b>⋮</b> → <b>"다른 브라우저로 열기"</b>')+'</div>';
+    html+='<button id="a2h-copy" style="width:100%;padding:11px;border-radius:9px;border:1px solid #3dc87a;background:transparent;color:#3dc87a;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:16px;font-family:inherit;">🔗 링크 복사 (브라우저에 붙여넣어 열기)</button>';
+  }
+  if(isIOS){html+=iosBlk+'<details style="margin-top:4px;"><summary style="font-size:12px;color:#6b7494;cursor:pointer;">안드로이드는?</summary><div style="margin-top:10px;">'+andBlk+'</div></details>';}
+  else if(isAnd){html+=andBlk+'<details style="margin-top:4px;"><summary style="font-size:12px;color:#6b7494;cursor:pointer;">아이폰은?</summary><div style="margin-top:10px;">'+iosBlk+'</div></details>';}
+  else{html+=iosBlk+andBlk;}
+  const card=document.createElement('div');
+  card.style.cssText='background:#14161c;border:1px solid #2a2d3a;border-radius:16px;max-width:420px;width:100%;max-height:86vh;overflow-y:auto;padding:22px 20px;font-family:inherit;';
+  card.innerHTML=html;ov.appendChild(card);document.body.appendChild(ov);
+  const xb=document.getElementById('a2h-x');if(xb)xb.onclick=()=>ov.remove();
+  const cp=document.getElementById('a2h-copy');
+  if(cp)cp.onclick=()=>{try{navigator.clipboard.writeText(url).then(()=>{cp.textContent='✅ 복사됨! 브라우저에 붙여넣어 여세요';},()=>{cp.textContent=url;});}catch(e){cp.textContent=url;}};
+}
 // 센터 이름(사이드바 로고 아래) — 저장값 jbog10_cn(동기화), 관리자는 클릭해서 변경
 function updCenterName(){const el=document.getElementById('pc-cname');if(!el)return;el.textContent=ld('jbog10_cn','줄리아발레아카데미-반포');if(isAdminUser())el.classList.add('admin');else el.classList.remove('admin');}
 function editCenterName(){if(!isAdminUser())return;if(!requireLogin())return;const cur=ld('jbog10_cn','줄리아발레아카데미-반포');const v=prompt('센터 이름을 입력하세요',cur);if(v===null)return;const nv=v.trim();if(!nv)return;sv('jbog10_cn',nv);updCenterName();}
