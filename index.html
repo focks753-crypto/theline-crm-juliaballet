@@ -1392,8 +1392,8 @@ function showAddHomeGuide(){
   if(cp)cp.onclick=()=>{try{navigator.clipboard.writeText(url).then(()=>{cp.textContent='✅ 복사됨! 브라우저에 붙여넣어 여세요';},()=>{cp.textContent=url;});}catch(e){cp.textContent=url;}};
 }
 // 센터 이름(사이드바 로고 아래) — 저장값 jbog10_cn(동기화), 관리자는 클릭해서 변경
-function updCenterName(){const el=document.getElementById('pc-cname');if(!el)return;el.textContent=ld('jbog10_cn','줄리아발레아카데미-반포');if(isAdminUser())el.classList.add('admin');else el.classList.remove('admin');}
-function editCenterName(){if(!isAdminUser())return;if(!requireLogin())return;const cur=ld('jbog10_cn','줄리아발레아카데미-반포');const v=prompt('센터 이름을 입력하세요',cur);if(v===null)return;const nv=v.trim();if(!nv)return;sv('jbog10_cn',nv);updCenterName();}
+function updCenterName(){const el=document.getElementById('pc-cname');if(!el)return;el.textContent=ld('jbog10_cn','줄리아발레아카데미-서초');if(isAdminUser())el.classList.add('admin');else el.classList.remove('admin');}
+function editCenterName(){if(!isAdminUser())return;if(!requireLogin())return;const cur=ld('jbog10_cn','줄리아발레아카데미-서초');const v=prompt('센터 이름을 입력하세요',cur);if(v===null)return;const nv=v.trim();if(!nv)return;sv('jbog10_cn',nv);updCenterName();}
 function canEditSlot(s){return isAdminUser()||(curUser&&curUser===s.trainerId);}
 function canAccessTrainer(tid){return isAdminUser()||(curUser&&curUser===tid);}
 // 일정(레슨/그룹) 표시 범위: 관리자 또는 미로그인 → 전체, 로그인한 강사 → 자기 것만
@@ -4304,7 +4304,7 @@ function openAddSheet_mobile(dateStr){
       <button class="pc-hamb" onclick="togglePcSide()" aria-label="메뉴">☰</button>
       <div class="pc-topbar-ttl" id="pc-ttl">홈</div>
       <div id="pc-viewonly" onclick="openPcLogin();" title="로그인하면 수정할 수 있어요" style="display:none;align-items:center;gap:5px;padding:4px 11px;border-radius:6px;background:rgba(246,173,85,.15);color:#f6ad55;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">👁 보기 전용 · 로그인</div>
-      <div class="pc-cname-top">줄리아발레아카데미-반포</div>
+      <div class="pc-cname-top">줄리아발레아카데미-서초</div>
     </div>
     <div id="pc-acts" class="pc-actbar"></div>
     <div id="pc-subtabbar" style="display:none;border-bottom:1px solid #1e2026;background:#0f1117;flex-shrink:0;"></div>
