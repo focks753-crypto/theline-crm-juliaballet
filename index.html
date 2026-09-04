@@ -4259,7 +4259,6 @@ function openAddSheet_mobile(dateStr){
     <div class="pc-nav" id="pc-nav"></div>
     <div class="pc-side-foot">
       <div class="pc-user-btn" onclick="openPcLogin();" id="pc-ubtn">
-        <div class="pc-user-av" id="pc-uav">?</div>
         <div>
           <div class="pc-user-nm" id="pc-unm">로그인</div>
           <div class="pc-user-rl" id="pc-url">클릭하여 로그인</div>
@@ -4591,9 +4590,9 @@ function initPcNav(){
   });
 }
 function updatePcUser(){
-  const av=document.getElementById('pc-uav'),nm=document.getElementById('pc-unm'),rl=document.getElementById('pc-url');if(!av)return;
-  if(curUser){const tr=trainers.find(t=>t.id===curUser);if(tr){av.textContent=initials(tr.name);nm.textContent=tr.name;rl.textContent=tr.role;return;}}
-  av.textContent='?';nm.textContent='로그인';rl.textContent='클릭하여 로그인';
+  const av=document.getElementById('pc-uav'),nm=document.getElementById('pc-unm'),rl=document.getElementById('pc-url');if(!nm||!rl)return;
+  if(curUser){const tr=trainers.find(t=>t.id===curUser);if(tr){if(av)av.textContent=initials(tr.name);nm.textContent=tr.name;rl.textContent=tr.role;return;}}
+  if(av)av.textContent='?';nm.textContent='로그인';rl.textContent='클릭하여 로그인';
 }
 function renderPcContent(){
   const ct=document.getElementById('pc-ct'),ttl=document.getElementById('pc-ttl'),acts=document.getElementById('pc-acts');
@@ -8199,9 +8198,10 @@ function _renderGrpMembers(ct){
     const rows=buildRows();
     // 요약
     const active=rows.filter(r=>r.plan.status!=='cancelled').length;
+    const cancelled=rows.filter(r=>r.plan.status==='cancelled').length;
     const unpaid=rows.filter(r=>r.plan.status!=='cancelled'&&r.bill&&!r.bill.paid).length;
     summEl.innerHTML='';
-    [{l:'전체 구독',v:rows.length+'명',c:'#e2e8f0'},{l:'구독중',v:active+'명',c:'#3dc87a'},{l:'이번 달 미결제',v:unpaid+'명',c:'#f87171'}].forEach(({l,v,c})=>{
+    [{l:'현재 구독중',v:active+'명',c:'#3dc87a'},{l:'해지자',v:cancelled+'명',c:'#f6ad55'},{l:'이번 달 미결제',v:unpaid+'명',c:'#f87171'}].forEach(({l,v,c})=>{
       const card=summEl.appendChild(document.createElement('div'));card.style.cssText='background:#111318;border:1px solid #1e2026;border-radius:8px;padding:10px 18px;display:flex;flex-direction:column;gap:3px;';
       card.appendChild(Object.assign(document.createElement('div'),{textContent:l})).style.cssText='font-size:11px;color:#4a5068;';
       card.appendChild(Object.assign(document.createElement('div'),{textContent:v})).style.cssText='font-size:18px;font-weight:800;color:'+c+';';
