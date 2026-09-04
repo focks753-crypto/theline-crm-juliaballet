@@ -1339,8 +1339,9 @@ function openPassAdjustModal(mb,plan,onDone){
     btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
       const newTot=parseInt(totI.value,10);const newRem=parseInt(remI.value,10);
       if(isNaN(newTot)||newTot<0||isNaN(newRem)){alert('숫자를 입력해주세요.');return;}
-      plan.sessions=newTot;
-      plan.remainAdjust=newRem-(newTot-planUsedCount(plan)); // 잔여=newRem 이 되도록 오프셋 저장
+      const _lp=(members.find(m=>m.id===mb.id)||{plans:[]}).plans.find(x=>x.id===plan.id)||plan;
+      _lp.sessions=newTot;
+      _lp.remainAdjust=newRem-(newTot-planUsedCount(_lp)); // 잔여=newRem 이 되도록 오프셋 저장
       sv('jbog10_mb',members);
       close();if(onDone)onDone();
     };
@@ -6898,7 +6899,7 @@ function renderMbPlanCard(container, mb, p, box, close) {
     if(owed>0&&isAdminUser()){
       const mkBtn=card.appendChild(Object.assign(document.createElement('button'),{textContent:'보강 완료 처리 (−1)'}));
       mkBtn.style.cssText='margin-top:8px;padding:5px 12px;border-radius:6px;border:1px solid rgba(96,165,250,.5);background:transparent;color:#60a5fa;font-size:11px;font-weight:600;cursor:pointer;';
-      mkBtn.onclick=()=>{if(!confirm('보강 1회를 완료 처리할까요? (보강 잔여 −1)'))return;mb.grpMakeupUsed=mb.grpMakeupUsed||{};mb.grpMakeupUsed[gc.id]=(mb.grpMakeupUsed[gc.id]||0)+1;sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);};
+      mkBtn.onclick=()=>{if(!requireLogin())return;if(!confirm('보강 1회를 완료 처리할까요? (보강 잔여 −1)'))return;const _lm=members.find(m=>m.id===mb.id)||mb;_lm.grpMakeupUsed=_lm.grpMakeupUsed||{};_lm.grpMakeupUsed[gc.id]=(_lm.grpMakeupUsed[gc.id]||0)+1;sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);};
     }
     return;
   }
@@ -6913,7 +6914,7 @@ function renderMbPlanCard(container, mb, p, box, close) {
     if(p.status!=='cancelled'){
       const cancelBtn=top.appendChild(Object.assign(document.createElement('button'),{textContent:'해지'}));
       cancelBtn.style.cssText='padding:4px 10px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:transparent;color:#f87171;font-size:11px;cursor:pointer;';
-      cancelBtn.onclick=()=>{if(!requireLogin())return;if(!confirm('개인레슨 등록을 해지하시겠습니까?'))return;p.status='cancelled';p.cancelledDate=_grpFmtD(new Date());sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);};
+      cancelBtn.onclick=()=>{if(!requireLogin())return;if(!confirm('개인레슨 등록을 해지하시겠습니까?'))return;const _lp=(members.find(m=>m.id===mb.id)||{plans:[]}).plans.find(x=>x.id===p.id)||p;_lp.status='cancelled';_lp.cancelledDate=_grpFmtD(new Date());sv('jbog10_mb',members);renderMbDetailModal(box,close,mb.id);};
     }
     const info=card.appendChild(document.createElement('div'));info.style.cssText='font-size:11px;color:#4a5068;line-height:1.9;';
     const curMonth=_grpFmtD(new Date()).slice(0,7);
@@ -7438,7 +7439,9 @@ function openGrpCancelModal(mb,plan,onDone){
     okB.style.background='#f87171';
     okB.onclick=()=>{
       const cd=dI.value;if(!cd){err.textContent='해지 시작일을 선택해주세요.';return;}
-      plan.status='cancelled';plan.cancelledDate=cd;
+      // 실시간 동기화로 참조 끊겼을 수 있으니 현재 members에서 live 플랜 재조회
+      const _lp=(members.find(m=>m.id===mb.id)||{plans:[]}).plans.find(x=>x.id===plan.id)||plan;
+      _lp.status='cancelled';_lp.cancelledDate=cd;
       // 해지월 이후 미결제 청구 제거
       const cm=cd.slice(0,7);
       grpBillings=grpBillings.filter(b=>!(b.planId===plan.id&&b.month>cm&&!b.paid));
