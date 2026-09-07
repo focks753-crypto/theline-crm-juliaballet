@@ -925,7 +925,6 @@ function initFB(){
       style="width:100%;padding:16px;border:none;border-radius:12px;background:#111;color:#fff;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px;">
       로그인
     </button>
-    <button onclick="showAddHomeGuide()" style="width:100%;margin-top:12px;padding:12px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;color:#555;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">📱 홈 화면에 앱으로 추가하는 법</button>
   </div>
 </div>
 
@@ -941,7 +940,6 @@ function initFB(){
       onblur="this.style.borderColor='#e0e0e0';this.style.background='#fafafa';">
     <div id="pcg-err" class="pcg-err"></div>
     <button class="pcg-btn" onclick="pcgLogin()">로그인</button>
-    <button onclick="showAddHomeGuide()" style="width:100%;margin-top:10px;padding:11px;border:1px solid #e0e0e0;border-radius:10px;background:transparent;color:#888;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;">📱 홈 화면에 앱으로 추가하는 법</button>
   </div>
 </div>
 
@@ -4099,6 +4097,17 @@ function dlSalesCSV(rows,total){
   }catch(e){console.warn('Firebase 로드 실패, 로컬 데이터 사용');}
   initGate();
   initPcLayout();
+  // 카카오톡 인앱브라우저로 열면 홈화면 추가 안내 자동 표시(Safari/Chrome으로 열도록). 기타 모바일은 1회만.
+  try{
+    const _ua=navigator.userAgent||'';
+    const _isKakao=/kakaotalk/i.test(_ua);
+    const _isMobile=/iphone|ipad|ipod|android/i.test(_ua);
+    const _standalone=(window.navigator.standalone===true)||(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches);
+    if(!_standalone&&typeof showAddHomeGuide==='function'){
+      if(_isKakao){ setTimeout(showAddHomeGuide,700); }
+      else if(_isMobile&&!localStorage.getItem('jbog10_a2hShown')){ try{localStorage.setItem('jbog10_a2hShown','1');}catch(e){} setTimeout(showAddHomeGuide,900); }
+    }
+  }catch(e){}
 })();
 
 
