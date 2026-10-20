@@ -6070,14 +6070,12 @@ function renderPcSessions(ct,acts){
     const kindLabel=lkind==='duet'?'듀엣레슨':lkind==='trio'?'트리오레슨':'개인레슨';
     const dispType=isLesson?kindLabel:(s.type||'-');
     let memo=s.type==='상담'?'💬 '+(s.memo||'-'):s.type==='OT'?('OT'+(s.memo?' · '+s.memo:'')):plan?(plan.productName||plan.sessions+'회권'):(s.memo||'-');
-    // 출석 상태 표기 (진행된 레슨만): 전원 미출석=미출석, 일부라도 미출석청구 있으면 표기
+    // 출석 상태 표기 (진행된 레슨만): 출석 체크 안 된 레슨은 '미체크(매출X)', 미출석청구는 별도 표기
     if(isLesson&&s.date<=todayStr){
       const ents=slotMemberEntries(s);
-      const absN=ents.filter(m=>ptMemAtt(s,m.memberId)==='absent').length;
       const absBN=ents.filter(m=>ptMemAtt(s,m.memberId)==='absentBilled').length;
       if(absBN>0)memo+=' · 미출석청구';
-      if(absN>0&&absN===ents.length)memo+=' · 미출석';
-      else if(absN>0)memo+=' · 일부 미출석';
+      if(!ptSlotHasBilled(s))memo+=' · 미체크(매출X)';
     }
     // 레슨 강사료: 진행된(오늘까지) 수업만, (세션 강사 × 레슨종류 × 수업시간)별 페이
     let ptPay=null;
@@ -6301,7 +6299,7 @@ function renderPcSales(ct,acts){
     });
   });
   const upcomingTotal=upcomingRows.reduce((s,x)=>s+x.amount,0);
-  const grossTotal=paidTotal+unpaidTotal+upcomingTotal;
+  const grossTotal=paidTotal+unpaidTotal; // 실제 매출 = 결제완료 + 미결제(출석기반). 예정(미래 미출석)은 제외
   // 월 예상 매출 = 등록된 수업이 예정대로 전부 진행된다고 가정한 금액(출석 무관). 그룹=예정세션×회당 + 개인레슨=기간내 레슨×회당
   let expectedTotal=0;
   members.forEach(mb=>{
@@ -7634,15 +7632,15 @@ function slotMemberEntries(s){return (s.members&&s.members.length)?s.members:(s.
 function slotMemberIds(s){return slotMemberEntries(s).map(m=>m.memberId);}
 function slotMemberLabel(s){const nm=slotMemberIds(s).map(id=>{const m=members.find(x=>x.id===id);return m?m.name:'?';});if(!nm.length)return null;return nm.length>1?(nm[0]+' 외 '+(nm.length-1)+'명'):nm[0];}
 // 개인/듀엣/트리오 레슨 출석 상태(그룹수업 출석과 동일 개념). s.ptAtt[memberId]:
-//   없음/'present' = 출석(기본) → 청구·강사료 발생 / 'absent' = 미출석 → 청구·강사료 제외 / 'absentBilled' = 미출석 청구 → 청구·강사료 발생
-// 값이 없으면 '출석'으로 간주하므로 기존 데이터/미체크 레슨은 종전처럼 그대로 청구됨(매출 보존)
-function ptMemAtt(s,memberId){return (s&&s.ptAtt&&s.ptAtt[memberId])||'present';}
-function ptMemBilled(s,memberId){return ptMemAtt(s,memberId)!=='absent';} // 출석·미출석청구 → 청구/강사료 대상, 미출석만 제외
+//   없음='none'(미체크,기본) → 매출 없음 / 'present'=출석 → 청구·강사료 / 'absent'=미출석 → 제외 / 'absentBilled'=미출석 청구 → 청구·강사료
+// 출석(또는 미출석청구)을 눌러야만 청구/강사료 발생. 미체크·미출석은 매출에 안 잡힘
+function ptMemAtt(s,memberId){return (s&&s.ptAtt&&s.ptAtt[memberId])||'none';} // none=미체크(기본) / present=출석 / absent=미출석 / absentBilled=미출석청구
+function ptMemBilled(s,memberId){const st=ptMemAtt(s,memberId);return st==='present'||st==='absentBilled';} // 출석·미출석청구만 청구/강사료. 미체크·미출석은 제외(출석 눌러야 매출)
 function ptSlotHasBilled(s){return slotMemberEntries(s).some(m=>ptMemBilled(s,m.memberId));} // 세션에 청구대상 회원이 하나라도 있으면 수업 진행=강사료 발생
 function slotMemberNamesFull(s){return slotMemberIds(s).map(id=>{const m=members.find(x=>x.id===id);return m?m.name:'?';}).join(', ');}
 function getPtMemberMonthCompleted(memberId,planId,month){
   const todayStr=_grpFmtD(new Date());
-  // 완료(오늘까지) 레슨 중 이 회원이 '미출석(미청구)'인 건 제외. 출석/미체크/미출석청구는 집계(청구)
+  // 완료(오늘까지) 레슨 중 '출석' 또는 '미출석청구' 표시된 것만 집계(미체크·미출석은 제외 — 출석 눌러야 청구)
   return slots.filter(s=>s.date.slice(0,7)===month&&s.date<=todayStr&&slotMemberEntries(s).some(m=>m.memberId===memberId&&m.planId===planId&&ptMemBilled(s,memberId))).length;
 }
 // 등록된 개인레슨(후불) 플랜들의 청구 레코드를 월별로 보장/갱신
@@ -7662,6 +7660,7 @@ function ensurePtBillings(){
         const amount=sessions*(plan.pricePerSession||0);
         let bill=ptBillings.find(b=>b.memberId===mb.id&&b.planId===plan.id&&b.month===month);
         if(!bill){
+          if(sessions<=0){ym.setMonth(ym.getMonth()+1);continue;} // 출석 0이면 청구 생성 안 함(출석 눌러야 청구)
           bill={id:'ptbill'+Date.now()+'_'+Math.random().toString(36).slice(2),
             memberId:mb.id,memberName:mb.name,planId:plan.id,productName:plan.productName,
             duration:plan.duration,month,sessions,pricePerSession:plan.pricePerSession||0,amount,regStart:plan.startDate||null,
@@ -7682,6 +7681,7 @@ function ensurePtBillings(){
     const plan=(mb.plans||[]).find(p=>p.id===b.planId);
     if(!plan)return false;
     if(plan.status==='cancelled')return false;
+    if((b.sessions||0)<=0)return false;         // 출석 0으로 떨어진 미결제 청구 제거(슬롯은 항상 로드돼 신뢰 가능)
     return true;
   });
   sv('jbog10_ptbl',ptBillings);
@@ -9568,8 +9568,7 @@ function openPcSlotDetail(slotId){
     renderInfo();
 
     // ── 출석 체크 (개인/듀엣/트리오 레슨) — 그룹수업 출석과 동일 개념 ──
-    // 기본 출석(청구·강사료 발생). 미출석은 청구·강사료 제외. 미출석이어도 받아야 하면 "미출석 청구".
-    // 예정 수업(미래)도 표시됨 — 단, 청구/강사료는 수업일이 지난 뒤에만 실제 반영됨
+    // 기본은 '미체크'(매출 없음). '출석'을 눌러야 청구·강사료 발생. 미출석은 제외, 미출석이어도 받아야 하면 "미출석 청구".
     const _todayStr=_grpFmtD(new Date());
     const _isLessonSlot=(s.type||'').includes('수업');
     if(_isLessonSlot&&slotMemberEntries(s).length){
@@ -9577,12 +9576,12 @@ function openPcSlotDetail(slotId){
       const attCard=box.appendChild(document.createElement('div'));
       attCard.style.cssText='background:#0f1117;border:1px solid #1e2026;border-radius:10px;padding:14px 16px;margin-bottom:16px;';
       attCard.appendChild(Object.assign(document.createElement('div'),{textContent:'출석 체크'})).style.cssText='font-size:12px;font-weight:800;color:#818cf8;margin-bottom:4px;';
-      attCard.appendChild(Object.assign(document.createElement('div'),{textContent:'기본은 출석(청구·강사료 발생). 미출석은 청구·강사료 제외 · 미출석이어도 받아야 하면 "미출석 청구"를 누르세요.'+(_isFuture?' (예정 수업 — 수업일 이후 청구/강사료 반영)':'')})).style.cssText='font-size:11px;color:#4a5068;margin-bottom:10px;line-height:1.5;';
+      attCard.appendChild(Object.assign(document.createElement('div'),{textContent:'수업을 진행하면 "출석"을 눌러주세요 — 출석한 것만 청구·강사료가 발생합니다. 안 누르면(미체크) 매출에 안 잡힙니다. 미출석이어도 받아야 하면 "미출석 청구".'+(_isFuture?' (예정 수업 — 수업일 이후 반영)':'')})).style.cssText='font-size:11px;color:#4a5068;margin-bottom:10px;line-height:1.5;';
       const attList=attCard.appendChild(document.createElement('div'));
       function setAtt(memberId,state){
         if(!requireLogin())return;
         s.ptAtt=s.ptAtt||{};
-        if(state==='present')delete s.ptAtt[memberId];else s.ptAtt[memberId]=state;
+        if(state==='none')delete s.ptAtt[memberId];else s.ptAtt[memberId]=state;
         if(s.ptAtt&&!Object.keys(s.ptAtt).length)delete s.ptAtt;
         sv('jbog10_sl',slots);ensurePtBillings();renderAtt();renderInfo();renderPcContent();
       }
@@ -9590,18 +9589,19 @@ function openPcSlotDetail(slotId){
         attList.innerHTML='';
         slotMemberEntries(s).forEach((me,i)=>{
           const m=members.find(x=>x.id===me.memberId);
-          const st=ptMemAtt(s,me.memberId);const isAbs=st==='absent';const isAbsB=st==='absentBilled';
-          const stColor=isAbs?'#f87171':(isAbsB?'#fbbf24':'#3dc87a');
-          const stBg=isAbs?'#241010':(isAbsB?'#231a07':'#0d2218');
+          const st=ptMemAtt(s,me.memberId);const isNone=st==='none',isPres=st==='present',isAbs=st==='absent',isAbsB=st==='absentBilled';
+          const stColor=isPres?'#3dc87a':(isAbs?'#f87171':(isAbsB?'#fbbf24':'#6b7494'));
+          const stBg=isPres?'#0d2218':(isAbs?'#241010':(isAbsB?'#231a07':'transparent'));
           const row=attList.appendChild(document.createElement('div'));
           row.style.cssText='display:flex;align-items:center;gap:9px;padding:9px 0;'+(i>0?'border-top:1px solid #1e2026;':'');
           const ck=row.appendChild(document.createElement('button'));
-          ck.style.cssText='width:26px;height:26px;border-radius:50%;border:2px solid '+stColor+';background:'+stBg+';color:'+stColor+';font-size:13px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;';
-          ck.textContent=isAbs?'✕':(isAbsB?'₩':'✓');ck.title='눌러서 출석/미출석 전환';
-          ck.onclick=()=>setAtt(me.memberId,(isAbs||isAbsB)?'present':'absent');
+          ck.style.cssText='width:26px;height:26px;border-radius:50%;border:2px solid '+(isNone?'#2a3050':stColor)+';background:'+stBg+';color:'+stColor+';font-size:13px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;';
+          ck.textContent=isPres?'✓':(isAbs?'✕':(isAbsB?'₩':''));ck.title='눌러서 미체크 → 출석 → 미출석 순환';
+          ck.onclick=()=>setAtt(me.memberId, isNone?'present':(isPres?'absent':'none'));
           const nmD=row.appendChild(document.createElement('div'));nmD.style.cssText='flex:1;min-width:0;';
           nmD.appendChild(Object.assign(document.createElement('div'),{textContent:m?m.name:'?'})).style.cssText='font-size:13px;font-weight:700;color:#e2e8f0;';
-          nmD.appendChild(Object.assign(document.createElement('div'),{textContent:isAbs?'미출석 · 청구/강사료 제외':(isAbsB?'미출석 청구 · 청구·강사료 발생':'출석 · 청구·강사료 발생')})).style.cssText='font-size:11px;color:'+stColor+';margin-top:1px;';
+          const desc=isPres?'출석 · 청구·강사료 발생':(isAbs?'미출석 · 청구/강사료 제외':(isAbsB?'미출석 청구 · 청구·강사료 발생':'미체크 · 매출 없음 (출석을 눌러야 청구)'));
+          nmD.appendChild(Object.assign(document.createElement('div'),{textContent:desc})).style.cssText='font-size:11px;color:'+stColor+';margin-top:1px;';
           if(isAbs||isAbsB){
             const bb=row.appendChild(document.createElement('button'));bb.textContent=isAbsB?'미출석 청구 ✓':'미출석 청구';
             bb.style.cssText='font-size:10px;padding:4px 9px;border-radius:5px;border:1px solid '+(isAbsB?'#fbbf24':'#2a3050')+';background:'+(isAbsB?'rgba(251,191,36,.15)':'transparent')+';color:'+(isAbsB?'#fbbf24':'#6b7494')+';cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:inherit;';
@@ -9609,8 +9609,8 @@ function openPcSlotDetail(slotId){
             bb.onclick=()=>setAtt(me.memberId,isAbsB?'absent':'absentBilled');
           }
           const bdg=row.appendChild(document.createElement('span'));
-          bdg.style.cssText='font-size:11px;font-weight:700;padding:3px 9px;border-radius:5px;white-space:nowrap;flex-shrink:0;background:'+(isAbs?'rgba(248,113,113,.15)':(isAbsB?'rgba(251,191,36,.15)':'rgba(61,200,122,.15)'))+';color:'+stColor+';';
-          bdg.textContent=isAbs?'미출석':(isAbsB?'미출석청구':'출석');
+          bdg.style.cssText='font-size:11px;font-weight:700;padding:3px 9px;border-radius:5px;white-space:nowrap;flex-shrink:0;background:'+(isPres?'rgba(61,200,122,.15)':(isAbs?'rgba(248,113,113,.15)':(isAbsB?'rgba(251,191,36,.15)':'rgba(107,116,148,.15)')))+';color:'+stColor+';';
+          bdg.textContent=isPres?'출석':(isAbs?'미출석':(isAbsB?'미출석청구':'미체크'));
         });
       }
       renderAtt();
