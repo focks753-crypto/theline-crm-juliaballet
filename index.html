@@ -914,9 +914,10 @@ function initFB(){
   <div style="background:#fff;border-radius:24px;padding:48px 32px 40px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.1);text-align:center;">
     <img src="logo.png" style="width:220px;max-height:140px;object-fit:contain;display:block;margin:0 auto 28px;">
     <p class="gate-hint" style="font-size:13px;font-weight:600;color:#888;margin:0 0 20px;letter-spacing:-.1px;">센터 코드로 로그인</p>
-    <input id="mobile-pin-input" type="password" autocomplete="current-password"
+    <input id="mobile-pin-input" type="password" inputmode="numeric" autocomplete="current-password"
       style="width:100%;padding:16px 18px;border:1.5px solid #e2e8f0;border-radius:12px;font-size:20px;text-align:center;outline:none;letter-spacing:4px;color:#1a202c;background:#f7f8fa;font-family:inherit;box-sizing:border-box;transition:border-color .15s,background .15s;"
       onkeydown="if(event.key==='Enter')submitMobilePin()"
+      oninput="if(this.value.length===6)submitMobilePin()"
       onfocus="this.style.borderColor='#818cf8';this.style.background='#fff';"
       onblur="this.style.borderColor='#e2e8f0';this.style.background='#f7f8fa';"
       placeholder="센터 비밀번호">
@@ -933,9 +934,10 @@ function initFB(){
   <div class="pcg-card">
     <img src="logo.png" class="pcg-logo" alt="TheLine CRM">
     <p class="pcg-label">센터 코드 입력</p>
-    <input id="pcg-input" class="pcg-input" type="password" autocomplete="current-password" placeholder="센터 비밀번호"
+    <input id="pcg-input" class="pcg-input" type="password" inputmode="numeric" autocomplete="current-password" placeholder="센터 비밀번호"
       style="letter-spacing:4px;font-size:18px;"
       onkeydown="if(event.key==='Enter')pcgLogin()"
+      oninput="if(this.value.length===6)pcgLogin()"
       onfocus="this.style.borderColor='#333';this.style.background='#fff';"
       onblur="this.style.borderColor='#e0e0e0';this.style.background='#fafafa';">
     <div id="pcg-err" class="pcg-err"></div>
