@@ -6261,6 +6261,14 @@ function renderPcSales(ct,acts){
    {l:'이번주',fn:()=>{const t=new Date();const dow=t.getDay()||7;const mon=new Date(t);mon.setDate(t.getDate()-dow+1);const sun=new Date(mon);sun.setDate(mon.getDate()+6);setQuick(fmtD(mon),fmtD(sun));}},
    {l:'이번달',fn:()=>{const t=new Date();const s=new Date(t.getFullYear(),t.getMonth(),1);const e=new Date(t.getFullYear(),t.getMonth()+1,0);setQuick(fmtD(s),fmtD(e));}},
   ].forEach(({l,fn,title},i)=>{const btn=qb.appendChild(document.createElement('button'));btn.className='pc-tbtn';btn.textContent=l;if(title)btn.title=title;btn.style.cssText='padding:8px '+(i<2?'12px':'16px')+';font-size:13px;font-weight:600;border-color:#818cf8;color:#818cf8;'+(i===1?'margin-right:8px;':'');btn.onclick=fn;});
+  // 매출내역: 학생별 묶어보기 토글 (기본 ON)
+  if(pcSV==='all'){
+    const _gOn=(window._salGroupBy!==false);
+    const gt=qb.appendChild(document.createElement('button'));gt.className='pc-tbtn';gt.textContent=_gOn?'학생별 묶기 ✓':'학생별 묶기';
+    gt.title='학생별로 묶어서 한 명의 내역을 모아 봅니다';
+    gt.style.cssText='padding:8px 16px;font-size:13px;font-weight:600;margin-left:8px;'+(_gOn?'border-color:#3dc87a;color:#3dc87a;':'border-color:#2a3050;color:#6b7494;');
+    gt.onclick=()=>{window._salGroupBy=!_gOn;renderPcContent();};
+  }
   const sd=new Date(pcSalStart),ed=new Date(pcSalEnd);ed.setHours(23,59,59);const rows=[];let total=0;
   members.forEach(mb=>{if(pcSalTr&&mb.trainerId!==pcSalTr)return;const tr2=trainers.find(t=>t.id===mb.trainerId);(mb.plans||[]).forEach(p=>{const pd=new Date(p.addedAt||0);if(pd<sd||pd>ed)return;rows.push({mb,p,tr2,ds:pd.toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'}),tm:String(pd.getHours()).padStart(2,'0')+':'+String(pd.getMinutes()).padStart(2,'0')});total+=p.totalPrice||0;});});
   const sd2=new Date(pcSalStart),ed2=new Date(pcSalEnd);ed2.setHours(23,59,59);
@@ -6298,105 +6306,106 @@ function renderPcSales(ct,acts){
   const tw=ct.appendChild(Object.assign(document.createElement('div'),{className:'pc-tw'}));const tbl=tw.appendChild(Object.assign(document.createElement('table'),{className:'pc-tbl'}));
   const thead=tbl.appendChild(document.createElement('thead'));const hr=thead.appendChild(document.createElement('tr'));const tbody=tbl.appendChild(document.createElement('tbody'));
   if(pcSV==='all'){
-    const hdrs=['No','날짜','시간','강사','회원','연락처','유입','결제방법','수업/상품','상태','금액'];
-    if(isAdminUser())hdrs.push('');
-    // 정렬 가능한 컬럼 인덱스 (No,관리 제외)
-    const salSortKeys=[null,'date','tm','tr','mbName','phone','inflow','pay','plan','status','amount'];
-    hdrs.forEach((h,hi)=>{
-      const th=hr.appendChild(document.createElement('th'));
-      const sk=salSortKeys[hi];
-      if(sk){
-        th.style.cssText='cursor:pointer;user-select:none;white-space:nowrap;';
-        th.innerHTML=h+'<span style="margin-left:4px;opacity:.5;font-size:10px;">'+(pcSalSortCol===sk?(pcSalSortDir===1?'▲':'▼'):'⇅')+'</span>';
-        th.title=h+' 기준 정렬';
-        th.onmouseenter=()=>{th.style.color='#c4cde8';};
-        th.onmouseleave=()=>{th.style.color='';};
-        th.onclick=()=>{
-          if(pcSalSortCol===sk){pcSalSortDir*=-1;}else{pcSalSortCol=sk;pcSalSortDir=1;}
-          renderPcContent();
-        };
-      } else { th.textContent=h; }
-    });
-    // PC 매출 테이블은 computeSales rows 기반으로 재렌더
-    {
-      const{rows:allRows}=(()=>{
-        const r2=[];
-        function _dstr(d){return d.toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'});}
-        // 1) 결제완료 청구(그룹수업+개인레슨)
-        paidBillItems.forEach(({kind,b,name})=>{const mb=members.find(m=>m.id===b.memberId);const tr3=mb?trainers.find(t=>t.id===mb.trainerId):null;const dObj=_billDate(b);r2.push({date:_dstr(dObj),tm:'-',tr:tr3?tr3.name:'-',mbName:b.memberName||(mb?mb.name:'-'),phone:(mb&&mb.phone)||'-',inflow:(mb&&mb.inflow)||'-',pay:b.paymentMethod||'-',plan:(kind==='group'?'[그룹] ':'[개인] ')+name+' '+(b.month||'')+' ('+(b.sessions||0)+'회)',status:'결제완료',amount:b.amount||0,isRefund:false,isUnpaid:false,isBillingPaid:true,billId:b.id,billKind:kind,memberId:b.memberId,addedAt:dObj.getTime()});});
-        // 2) 레거시 선불 직접판매
-        legacyPaid.forEach(({mb,p})=>{const tr3=trainers.find(t=>t.id===mb.trainerId);const pd=new Date(p.addedAt||0);r2.push({date:_dstr(pd),tm:String(pd.getHours()).padStart(2,'0')+':'+String(pd.getMinutes()).padStart(2,'0'),tr:tr3?tr3.name:'-',mbName:mb.name,phone:mb.phone||'-',inflow:mb.inflow||'-',pay:p.paymentMethod||mb.payment||'-',plan:(p.productName||p.duration+'분 '+p.sessions+'회권'),status:'결제완료',amount:p.totalPrice||0,isRefund:false,isUnpaid:false,addedAt:p.addedAt||0});});
-        // 3) 미결제 청구(그룹수업+개인레슨)
-        unpaidBills.forEach(({kind,b,name})=>{const mb=members.find(m=>m.id===b.memberId);const tr3=mb?trainers.find(t=>t.id===mb.trainerId):null;const dObj=_billDateObj(b);r2.push({date:_dstr(dObj),tm:'-',tr:tr3?tr3.name:'-',mbName:b.memberName||(mb?mb.name:'-'),phone:(mb&&mb.phone)||'-',inflow:(mb&&mb.inflow)||'-',pay:'-',plan:(kind==='group'?'[그룹] ':'[개인] ')+name+' '+(b.month||'')+' ('+(b.sessions||0)+'회)',status:'미결제',amount:b.amount||0,isRefund:false,isUnpaid:true,billId:b.id,billKind:kind,memberId:b.memberId,addedAt:dObj.getTime()});});
-        // 4) 환불
-        refunds.forEach(rf=>{if(!rf.processedAt)return;const rd=new Date(rf.processedAt);if(rd<sd||rd>ed)return;if(pcSalTr){const mb=members.find(m=>m.name===rf.memberName);if(mb&&mb.trainerId!==pcSalTr)return;}r2.push({date:_dstr(rd),tm:String(rd.getHours()).padStart(2,'0')+':'+String(rd.getMinutes()).padStart(2,'0'),tr:'-',mbName:rf.memberName,phone:rf.phone||'-',inflow:'-',pay:'-',plan:(rf.type==='transfer'?'[양도]':'[환불]')+' '+rf.planName,status:'환불',amount:-(rf.refundAmount||0),isRefund:true,isUnpaid:false,addedAt:rf.processedAt});});
-        // 5) 예정(미래 개인레슨) — 아직 수업 안 한 등록 레슨
-        upcomingRows.forEach(({mb,plan,month,sessions,amount,repDate})=>{const tr3=trainers.find(t=>t.id===mb.trainerId);r2.push({date:_dstr(repDate),tm:'-',tr:tr3?tr3.name:'-',mbName:mb.name,phone:mb.phone||'-',inflow:mb.inflow||'-',pay:'-',plan:'[개인] '+(plan.productName||'개인레슨')+' '+month+' ('+sessions+'회 예정)',status:'예정',amount:amount,isRefund:false,isUnpaid:false,isUpcoming:true,addedAt:repDate.getTime()});});
-        if(pcSalSortCol){
-          r2.sort((a,b)=>{
-            let va=a[pcSalSortCol],vb=b[pcSalSortCol];
-            if(pcSalSortCol==='amount'){va=Number(va);vb=Number(vb);}
-            if(typeof va==='string')return va.localeCompare(vb,'ko')*pcSalSortDir;
-            return (va-vb)*pcSalSortDir;
-          });
-        } else { r2.sort((a,b)=>b.addedAt-a.addedAt); }
-        return{rows:r2};
-      })();
-      allRows.forEach((r,i)=>{
-        const row=tbody.appendChild(document.createElement('tr'));
-        if(r.isRefund)row.style.cssText='background:rgba(248,113,113,.06);';
-        else if(r.isUnpaid)row.style.cssText='background:rgba(246,173,85,.05);';
-        else if(r.isUpcoming)row.style.cssText='background:rgba(129,140,248,.05);';
-        [i+1,r.date,r.tm,r.tr,r.mbName,r.phone,r.inflow,r.pay,r.plan,r.status,r.amount].forEach((v,ci)=>{
-          const td=document.createElement('td');
-          if(ci===9){td.textContent=v;td.style.fontWeight='700';td.style.color=r.status==='결제완료'?'#3dc87a':(r.status==='미결제'?'#f6ad55':(r.status==='예정'?'#818cf8':'#f87171'));}
-          else if(ci===10){td.textContent=(v<0?'-':'')+Math.abs(v).toLocaleString()+'원';td.style.fontWeight='700';if(r.isRefund)td.style.color='#f87171';else if(r.isUnpaid)td.style.color='#f6ad55';else if(r.isUpcoming)td.style.color='#818cf8';}
-          else td.textContent=v;
-          row.appendChild(td);
-        });
-        // 관리자 전용 삭제 버튼 (예정 행은 청구가 아니므로 제외 — 레슨일정에서 레슨을 지우면 사라짐)
-        if(isAdminUser()){
-          const actTd=row.appendChild(document.createElement('td'));
-          if(r.isUpcoming){return;}
-          const delBtn=actTd.appendChild(document.createElement('button'));
-          delBtn.style.cssText='padding:5px 10px;font-size:11px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:transparent;color:#f87171;cursor:pointer;white-space:nowrap;';
-          delBtn.textContent='삭제';
-          delBtn.onclick=async()=>{
-            const isTallyUnpaid=r.billId&&r.isUnpaid;
-            const msg=isTallyUnpaid
-              ? '[관리자] '+r.mbName+' · '+r.plan+'\n\n이 청구는 등록된 레슨/출석을 자동 집계한 것입니다. 레슨이 남아있으면 삭제해도 다시 집계됩니다.\n완전히 없애려면 개인레슨 일정(또는 월간현황 출석)에서 해당 레슨을 지우세요.\n\n그래도 이 청구 행을 삭제할까요?'
-              : '[관리자] '+r.mbName+' · '+r.plan+' · '+Math.abs(r.amount).toLocaleString()+'원\n이 매출 내역을 삭제할까요?';
-            if(!confirm(msg))return;
-            if(r.isRefund){
-              refunds=refunds.filter(x=>x.memberName!==r.mbName||x.refundAmount!==Math.abs(r.amount));
-              sv('jbog10_rf',refunds);
-            } else if(r.billId){
-              // 청구(그룹/개인레슨) 삭제. 결제완료 청구만 재생성 억제(noBillMonths). 미결제(자동집계)는 억제 안 함 → 레슨 남아있으면 다시 집계.
-              const arr=r.billKind==='group'?grpBillings:ptBillings;
-              const bill=arr.find(b=>b.id===r.billId);
-              if(bill){
-                const mb=members.find(m=>m.id===(r.memberId||bill.memberId));
-                if(mb){
-                  const plan=(mb.plans||[]).find(p=>p.id===bill.planId);
-                  if(plan&&r.billKind==='group'){
-                    // 그룹수업 매출내역 삭제 = 구독 해지 처리(그 달부터 청구 중단·재집계 방지)
-                    plan.status='cancelled';
-                    if(!plan.cancelledDate)plan.cancelledDate=(bill.month||_grpFmtD(new Date()).slice(0,7))+'-01';
-                  } else if(plan&&bill.paid){plan.noBillMonths=[...new Set([...(plan.noBillMonths||[]),bill.month])];}
-                  mb.plans=(mb.plans||[]).filter(p=>r.billKind==='group'?p.grpBillId!==bill.id:p.ptBillId!==bill.id);
-                  sv('jbog10_mb',members);
-                }
-                if(r.billKind==='group'){grpBillings=grpBillings.filter(b=>b.id!==bill.id);sv('jbog10_gbl',grpBillings);if(db&&bill.id)db.collection('jbog10_gbl').doc(bill.id).delete().catch(()=>{});}
-                else{ptBillings=ptBillings.filter(b=>b.id!==bill.id);sv('jbog10_ptbl',ptBillings);if(db&&bill.id)db.collection('jbog10_ptbl').doc(bill.id).delete().catch(()=>{});}
-              }
-            } else {
-              // 레거시 선불 직접판매 plan 삭제
-              const mb=members.find(m=>m.name===r.mbName);
-              if(mb){mb.plans=(mb.plans||[]).filter(p=>{const d=new Date(p.addedAt||0);const ds=d.toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'});return!(ds===r.date&&p.totalPrice===r.amount&&!p.refunded);});sv('jbog10_mb',members);}
+    const grouped=(window._salGroupBy!==false); // 기본: 학생별 묶기 ON
+    // ── 매출 행 생성 (결제완료 청구 / 레거시 직접판매 / 미결제 청구 / 환불 / 예정) ──
+    const allRows=(()=>{
+      const r2=[];
+      function _dstr(d){return d.toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'});}
+      paidBillItems.forEach(({kind,b,name})=>{const mb=members.find(m=>m.id===b.memberId);const tr3=mb?trainers.find(t=>t.id===mb.trainerId):null;const dObj=_billDate(b);r2.push({date:_dstr(dObj),tm:'-',tr:tr3?tr3.name:'-',mbName:b.memberName||(mb?mb.name:'-'),phone:(mb&&mb.phone)||'-',inflow:(mb&&mb.inflow)||'-',pay:b.paymentMethod||'-',plan:(kind==='group'?'[그룹] ':'[개인] ')+name+' '+(b.month||'')+' ('+(b.sessions||0)+'회)',status:'결제완료',amount:b.amount||0,isRefund:false,isUnpaid:false,isBillingPaid:true,billId:b.id,billKind:kind,memberId:b.memberId,addedAt:dObj.getTime()});});
+      legacyPaid.forEach(({mb,p})=>{const tr3=trainers.find(t=>t.id===mb.trainerId);const pd=new Date(p.addedAt||0);r2.push({date:_dstr(pd),tm:String(pd.getHours()).padStart(2,'0')+':'+String(pd.getMinutes()).padStart(2,'0'),tr:tr3?tr3.name:'-',mbName:mb.name,phone:mb.phone||'-',inflow:mb.inflow||'-',pay:p.paymentMethod||mb.payment||'-',plan:(p.productName||p.duration+'분 '+p.sessions+'회권'),status:'결제완료',amount:p.totalPrice||0,isRefund:false,isUnpaid:false,memberId:mb.id,addedAt:p.addedAt||0});});
+      unpaidBills.forEach(({kind,b,name})=>{const mb=members.find(m=>m.id===b.memberId);const tr3=mb?trainers.find(t=>t.id===mb.trainerId):null;const dObj=_billDateObj(b);r2.push({date:_dstr(dObj),tm:'-',tr:tr3?tr3.name:'-',mbName:b.memberName||(mb?mb.name:'-'),phone:(mb&&mb.phone)||'-',inflow:(mb&&mb.inflow)||'-',pay:'-',plan:(kind==='group'?'[그룹] ':'[개인] ')+name+' '+(b.month||'')+' ('+(b.sessions||0)+'회)',status:'미결제',amount:b.amount||0,isRefund:false,isUnpaid:true,billId:b.id,billKind:kind,memberId:b.memberId,addedAt:dObj.getTime()});});
+      refunds.forEach(rf=>{if(!rf.processedAt)return;const rd=new Date(rf.processedAt);if(rd<sd||rd>ed)return;const mbF=members.find(m=>m.name===rf.memberName);if(pcSalTr){if(mbF&&mbF.trainerId!==pcSalTr)return;}r2.push({date:_dstr(rd),tm:String(rd.getHours()).padStart(2,'0')+':'+String(rd.getMinutes()).padStart(2,'0'),tr:'-',mbName:rf.memberName,phone:rf.phone||'-',inflow:'-',pay:'-',plan:(rf.type==='transfer'?'[양도]':'[환불]')+' '+rf.planName,status:'환불',amount:-(rf.refundAmount||0),isRefund:true,isUnpaid:false,memberId:(mbF&&mbF.id)||('n:'+rf.memberName),addedAt:rf.processedAt});});
+      upcomingRows.forEach(({mb,plan,month,sessions,amount,repDate})=>{const tr3=trainers.find(t=>t.id===mb.trainerId);r2.push({date:_dstr(repDate),tm:'-',tr:tr3?tr3.name:'-',mbName:mb.name,phone:mb.phone||'-',inflow:mb.inflow||'-',pay:'-',plan:'[개인] '+(plan.productName||'개인레슨')+' '+month+' ('+sessions+'회 예정)',status:'예정',amount:amount,isRefund:false,isUnpaid:false,isUpcoming:true,memberId:mb.id,addedAt:repDate.getTime()});});
+      return r2;
+    })();
+    const _admin=isAdminUser();
+    // 삭제 버튼(관리자) — 묶기/전체 두 모드 공용
+    function attachDel(actTd,r){
+      const delBtn=actTd.appendChild(document.createElement('button'));
+      delBtn.style.cssText='padding:5px 10px;font-size:11px;border-radius:6px;border:1px solid rgba(248,113,113,.4);background:transparent;color:#f87171;cursor:pointer;white-space:nowrap;';
+      delBtn.textContent='삭제';
+      delBtn.onclick=async()=>{
+        const isTallyUnpaid=r.billId&&r.isUnpaid;
+        const msg=isTallyUnpaid
+          ? '[관리자] '+r.mbName+' · '+r.plan+'\n\n이 청구는 등록된 레슨/출석을 자동 집계한 것입니다. 레슨이 남아있으면 삭제해도 다시 집계됩니다.\n완전히 없애려면 개인레슨 일정(또는 월간현황 출석)에서 해당 레슨을 지우세요.\n\n그래도 이 청구 행을 삭제할까요?'
+          : '[관리자] '+r.mbName+' · '+r.plan+' · '+Math.abs(r.amount).toLocaleString()+'원\n이 매출 내역을 삭제할까요?';
+        if(!confirm(msg))return;
+        if(r.isRefund){
+          refunds=refunds.filter(x=>x.memberName!==r.mbName||x.refundAmount!==Math.abs(r.amount));
+          sv('jbog10_rf',refunds);
+        } else if(r.billId){
+          const arr=r.billKind==='group'?grpBillings:ptBillings;
+          const bill=arr.find(b=>b.id===r.billId);
+          if(bill){
+            const mb=members.find(m=>m.id===(r.memberId||bill.memberId));
+            if(mb){
+              const plan=(mb.plans||[]).find(p=>p.id===bill.planId);
+              if(plan&&r.billKind==='group'){plan.status='cancelled';if(!plan.cancelledDate)plan.cancelledDate=(bill.month||_grpFmtD(new Date()).slice(0,7))+'-01';}
+              else if(plan&&bill.paid){plan.noBillMonths=[...new Set([...(plan.noBillMonths||[]),bill.month])];}
+              mb.plans=(mb.plans||[]).filter(p=>r.billKind==='group'?p.grpBillId!==bill.id:p.ptBillId!==bill.id);
+              sv('jbog10_mb',members);
             }
-            renderPcContent();
-          };
+            if(r.billKind==='group'){grpBillings=grpBillings.filter(b=>b.id!==bill.id);sv('jbog10_gbl',grpBillings);if(db&&bill.id)db.collection('jbog10_gbl').doc(bill.id).delete().catch(()=>{});}
+            else{ptBillings=ptBillings.filter(b=>b.id!==bill.id);sv('jbog10_ptbl',ptBillings);if(db&&bill.id)db.collection('jbog10_ptbl').doc(bill.id).delete().catch(()=>{});}
+          }
+        } else {
+          const mb=members.find(m=>m.name===r.mbName);
+          if(mb){mb.plans=(mb.plans||[]).filter(p=>{const d=new Date(p.addedAt||0);const ds=d.toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'});return!(ds===r.date&&p.totalPrice===r.amount&&!p.refunded);});sv('jbog10_mb',members);}
         }
+        renderPcContent();
+      };
+    }
+    function _statusTd(v,r){const td=document.createElement('td');td.textContent=v;td.style.fontWeight='700';td.style.color=r.status==='결제완료'?'#3dc87a':(r.status==='미결제'?'#f6ad55':(r.status==='예정'?'#818cf8':'#f87171'));return td;}
+    function _amtTd(v,r){const td=document.createElement('td');td.textContent=(v<0?'-':'')+Math.abs(v).toLocaleString()+'원';td.style.fontWeight='700';td.style.whiteSpace='nowrap';if(r.isRefund)td.style.color='#f87171';else if(r.isUnpaid)td.style.color='#f6ad55';else if(r.isUpcoming)td.style.color='#818cf8';return td;}
+    function _rowBg(row,r){if(r.isRefund)row.style.background='rgba(248,113,113,.06)';else if(r.isUnpaid)row.style.background='rgba(246,173,85,.05)';else if(r.isUpcoming)row.style.background='rgba(129,140,248,.05)';}
+    if(grouped){
+      // ── 학생별 묶어보기: 그룹 헤더(이름·연락처·담당·합계) + 상세 ──
+      const cols=['날짜','시간','수업/상품','결제방법','상태','금액'];if(_admin)cols.push('관리');
+      cols.forEach(h=>{const th=hr.appendChild(document.createElement('th'));th.textContent=h;th.style.cssText='padding:8px 10px;text-align:left;color:#6b7494;font-size:11px;font-weight:700;white-space:nowrap;';});
+      const colspan=cols.length;
+      const groups={};
+      allRows.forEach(r=>{const k=r.memberId||('n:'+r.mbName);if(!groups[k])groups[k]={name:r.mbName,phone:'',tr:'',inflow:'',rows:[],tot:0,unpaid:0};const g=groups[k];g.rows.push(r);g.tot+=r.amount;if(r.isUnpaid)g.unpaid+=r.amount;if(r.tr&&r.tr!=='-')g.tr=r.tr;if(r.inflow&&r.inflow!=='-')g.inflow=r.inflow;if(r.phone&&r.phone!=='-')g.phone=r.phone;});
+      const gkeys=Object.keys(groups).sort((a,b)=>(groups[a].name||'').localeCompare(groups[b].name||'','ko'));
+      gkeys.forEach(k=>{
+        const g=groups[k];
+        g.rows.sort((a,b)=> a.plan===b.plan ? (b.addedAt-a.addedAt) : a.plan.localeCompare(b.plan,'ko'));
+        const ghr=tbody.appendChild(document.createElement('tr'));
+        const gtd=ghr.appendChild(document.createElement('td'));gtd.colSpan=colspan;
+        gtd.style.cssText='background:#13161d;border-top:2px solid #2a3050;padding:9px 12px;';
+        gtd.innerHTML='<span style="font-size:14px;font-weight:800;color:#e2e8f0;">'+escapeHtml(g.name||'-')+'</span>'
+          +'<span style="font-size:11px;color:#6b7494;margin-left:8px;">'+escapeHtml(g.phone||'')+(g.tr?' · 담당 '+escapeHtml(g.tr):'')+(g.inflow?' · '+escapeHtml(g.inflow):'')+'</span>'
+          +'<span style="float:right;font-size:13px;font-weight:800;color:#3dc87a;">합계 '+g.tot.toLocaleString()+'원'+(g.unpaid>0?' <span style="color:#f6ad55;font-weight:700;">· 미결제 '+g.unpaid.toLocaleString()+'원</span>':'')+'</span>';
+        g.rows.forEach(r=>{
+          const row=tbody.appendChild(document.createElement('tr'));_rowBg(row,r);
+          [r.date,r.tm,r.plan,r.pay].forEach(v=>{const td=document.createElement('td');td.style.padding='8px 10px';td.textContent=v;row.appendChild(td);});
+          row.appendChild(_statusTd(r.status,r)).style.padding='8px 10px';
+          row.appendChild(_amtTd(r.amount,r)).style.padding='8px 10px';
+          if(_admin){const actTd=row.appendChild(document.createElement('td'));if(!r.isUpcoming)attachDel(actTd,r);}
+        });
+      });
+    } else {
+      // ── 전체 목록(컬럼 정렬 가능) ──
+      const hdrs=['No','날짜','시간','강사','회원','연락처','유입','결제방법','수업/상품','상태','금액'];
+      if(_admin)hdrs.push('');
+      const salSortKeys=[null,'date','tm','tr','mbName','phone','inflow','pay','plan','status','amount'];
+      hdrs.forEach((h,hi)=>{
+        const th=hr.appendChild(document.createElement('th'));const sk=salSortKeys[hi];
+        if(sk){
+          th.style.cssText='cursor:pointer;user-select:none;white-space:nowrap;';
+          th.innerHTML=h+'<span style="margin-left:4px;opacity:.5;font-size:10px;">'+(pcSalSortCol===sk?(pcSalSortDir===1?'▲':'▼'):'⇅')+'</span>';
+          th.title=h+' 기준 정렬';th.onmouseenter=()=>{th.style.color='#c4cde8';};th.onmouseleave=()=>{th.style.color='';};
+          th.onclick=()=>{if(pcSalSortCol===sk){pcSalSortDir*=-1;}else{pcSalSortCol=sk;pcSalSortDir=1;}renderPcContent();};
+        } else { th.textContent=h; }
+      });
+      const fr=allRows.slice();
+      if(pcSalSortCol){fr.sort((a,b)=>{let va=a[pcSalSortCol],vb=b[pcSalSortCol];if(pcSalSortCol==='amount'){va=Number(va);vb=Number(vb);}if(typeof va==='string')return va.localeCompare(vb,'ko')*pcSalSortDir;return (va-vb)*pcSalSortDir;});}
+      else {fr.sort((a,b)=>b.addedAt-a.addedAt);}
+      fr.forEach((r,i)=>{
+        const row=tbody.appendChild(document.createElement('tr'));_rowBg(row,r);
+        [i+1,r.date,r.tm,r.tr,r.mbName,r.phone,r.inflow,r.pay,r.plan].forEach(v=>{const td=document.createElement('td');td.textContent=v;row.appendChild(td);});
+        row.appendChild(_statusTd(r.status,r));
+        row.appendChild(_amtTd(r.amount,r));
+        if(_admin){const actTd=row.appendChild(document.createElement('td'));if(!r.isUpcoming)attachDel(actTd,r);}
       });
     }
   } else if(pcSV==='bypkg'){
