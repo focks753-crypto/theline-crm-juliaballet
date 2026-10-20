@@ -9526,15 +9526,17 @@ function openPcSlotDetail(slotId){
     }
     renderInfo();
 
-    // ── 출석 체크 (개인/듀엣/트리오 레슨, 오늘까지 진행분) — 그룹수업 출석과 동일 개념 ──
+    // ── 출석 체크 (개인/듀엣/트리오 레슨) — 그룹수업 출석과 동일 개념 ──
     // 기본 출석(청구·강사료 발생). 미출석은 청구·강사료 제외. 미출석이어도 받아야 하면 "미출석 청구".
+    // 예정 수업(미래)도 표시됨 — 단, 청구/강사료는 수업일이 지난 뒤에만 실제 반영됨
     const _todayStr=_grpFmtD(new Date());
     const _isLessonSlot=(s.type||'').includes('수업');
-    if(_isLessonSlot&&s.date<=_todayStr&&slotMemberEntries(s).length){
+    if(_isLessonSlot&&slotMemberEntries(s).length){
+      const _isFuture=s.date>_todayStr;
       const attCard=box.appendChild(document.createElement('div'));
       attCard.style.cssText='background:#0f1117;border:1px solid #1e2026;border-radius:10px;padding:14px 16px;margin-bottom:16px;';
       attCard.appendChild(Object.assign(document.createElement('div'),{textContent:'출석 체크'})).style.cssText='font-size:12px;font-weight:800;color:#818cf8;margin-bottom:4px;';
-      attCard.appendChild(Object.assign(document.createElement('div'),{textContent:'기본은 출석(청구·강사료 발생). 미출석은 청구·강사료 제외 · 미출석이어도 받아야 하면 "미출석 청구"를 누르세요.'})).style.cssText='font-size:11px;color:#4a5068;margin-bottom:10px;line-height:1.5;';
+      attCard.appendChild(Object.assign(document.createElement('div'),{textContent:'기본은 출석(청구·강사료 발생). 미출석은 청구·강사료 제외 · 미출석이어도 받아야 하면 "미출석 청구"를 누르세요.'+(_isFuture?' (예정 수업 — 수업일 이후 청구/강사료 반영)':'')})).style.cssText='font-size:11px;color:#4a5068;margin-bottom:10px;line-height:1.5;';
       const attList=attCard.appendChild(document.createElement('div'));
       function setAtt(memberId,state){
         if(!requireLogin())return;
