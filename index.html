@@ -5725,38 +5725,64 @@ function renderMbTab(ct,mb,tab,box,close){
 
     // (결제 내역 통계 금액은 고객관리에서 숨김 — 매출은 매출관리에서 확인)
   } else {
-    // 결제 내역 탭 — 같은 반은 하나로(결제완료 합계), 담당 선생님별 구분
+    // 결제 내역 탭 — 같은 반(수업명)은 하나로 묶고(결제 합계), 담당 선생님별 구분, 월별 필터
     const plans=mb.plans||[];
-    const entries=[];const grpSeen={};
+    const _base=(nm)=>(''+(nm||'')).replace(/\s+\d{4}-\d{2}$/,'').trim();   // "인텐3 2026-09" → "인텐3"
+    const _recMonth=(p)=>{const m=(''+(p.productName||'')).match(/(\d{4}-\d{2})$/);if(m)return m[1];if(p.paymentDate&&/^\d{4}-\d{2}/.test(p.paymentDate))return p.paymentDate.slice(0,7);if(p.addedAt){const d=new Date(p.addedAt);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}return '';};
+    const _teacherFor=(p)=>{
+      if(p.productType==='group'&&p.groupClassId)return mbPlanTeacher(mb,p);
+      if(p.productType==='group'||p.productType==='group_monthly'){const gc=groupClasses.find(g2=>g2.name===_base(p.productName));if(gc){const t=trainers.find(x=>x.id===gc.trainerId);if(t)return t.name;}}
+      return mbPlanTeacher(mb,p);
+    };
+    // 수업/상품별로 묶기 (구독 플랜 + 결제레코드(_sal_/선불/직판) 합산)
+    const groups={};
     plans.forEach(p=>{
-      if(p.productType==='group'&&p.groupClassId&&!p.prepaid){
-        if(grpSeen[p.groupClassId])return;grpSeen[p.groupClassId]=true;
-        const gc=groupClasses.find(g=>g.id===p.groupClassId);
-        const paid=grpBillings.filter(b=>b.memberId===mb.id&&b.groupClassId===p.groupClassId&&b.paid);
-        const total=paid.reduce((s,b)=>s+(b.amount||0),0);const dts=paid.map(b=>b.paidDate).filter(Boolean).sort();
-        entries.push({name:(gc?gc.name:(p.productName||'그룹수업')),teacher:mbPlanTeacher(mb,p),total,sub:'그룹수업'+(paid.length?' · '+paid.length+'개월 결제':' · 결제 없음'),date:dts.slice(-1)[0]||'',sortTs:dts.length?new Date(dts.slice(-1)[0]).getTime():(p.addedAt||0)});
-      } else if(p.prepaid||((p.totalPrice||0)>0)){
-        entries.push({name:(p.productName||((p.duration?p.duration+'분 ':'')+(p.sessions?p.sessions+'회권':'상품'))),teacher:mbPlanTeacher(mb,p),total:(p.totalPrice||0),sub:(p.prepaid?'선불 회차권':'직접 결제')+(p.paymentMethod?' · '+p.paymentMethod:''),date:(p.paymentDate||(p.addedAt?new Date(p.addedAt).toLocaleDateString('ko-KR'):'')),sortTs:(p.addedAt||0)});
-      } else {
-        const paid=ptBillings.filter(b=>b.planId===p.id&&b.paid);
-        const total=paid.reduce((s,b)=>s+(b.amount||0),0);const dts=paid.map(b=>b.paidDate).filter(Boolean).sort();
-        entries.push({name:(p.productName||'개인레슨'),teacher:mbPlanTeacher(mb,p),total,sub:'개인레슨'+(paid.length?' · '+paid.length+'건 결제':' · 결제 없음'),date:dts.slice(-1)[0]||'',sortTs:dts.length?new Date(dts.slice(-1)[0]).getTime():(p.addedAt||0)});
+      const isGrp=(p.productType==='group'||p.productType==='group_monthly');
+      const isPt=(p.productType==='pt'||p.productType==='pt_monthly');
+      const nm=_base(p.productName)||(p.productName||'상품');
+      const key=(isGrp?'g:':isPt?'p:':'o:')+nm;
+      const g=groups[key]=groups[key]||{name:nm,teacher:'미지정',kindLabel:(isGrp?'그룹수업':isPt?'개인레슨':'상품'),total:0,byMonth:{},payMonths:{},lastTs:0,lastDate:''};
+      if((p.productType==='group'&&p.groupClassId)||g.teacher==='미지정')g.teacher=_teacherFor(p);
+      const amt=p.totalPrice||0;
+      if(amt>0){ // 실제 결제레코드
+        const mo=_recMonth(p);const dt=p.paymentDate||(p.addedAt?new Date(p.addedAt).toLocaleDateString('ko-KR'):'');
+        g.total+=amt;g.byMonth[mo]=(g.byMonth[mo]||0)+amt;if(dt)(g.payMonths[mo]=g.payMonths[mo]||{amt:0,date:dt,method:p.paymentMethod||''}).amt+=amt;
+        const ts=(p.addedAt||0)||(p.paymentDate?new Date(p.paymentDate+'T00:00:00').getTime():0);if(ts>=g.lastTs){g.lastTs=ts;g.lastDate=dt;}
       }
     });
-    if(!entries.length){const emp=ct.appendChild(document.createElement('div'));emp.style.cssText='text-align:center;padding:40px;color:#2a2d45;font-size:13px;';emp.textContent='결제 내역이 없습니다';}
+    const allGroups=Object.values(groups);
+    // ── 월별 필터 바 (상단) ──
+    const months=[...new Set(allGroups.flatMap(g=>Object.keys(g.byMonth)).filter(Boolean))].sort().reverse();
+    if(!('_mbPayMonth' in window))window._mbPayMonth=null; // null = 전체
+    if(window._mbPayMonth&&!months.includes(window._mbPayMonth))window._mbPayMonth=null;
+    const fbar=ct.appendChild(document.createElement('div'));fbar.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;';
+    fbar.appendChild(Object.assign(document.createElement('span'),{textContent:'결제월'})).style.cssText='font-size:12px;color:#6b7494;font-weight:700;';
+    const mkChip=(label,val)=>{const b=fbar.appendChild(document.createElement('button'));const on=(window._mbPayMonth===val);b.textContent=label;b.style.cssText='padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;border:1px solid '+(on?'#818cf8':'#2a3050')+';background:'+(on?'rgba(129,140,248,.15)':'transparent')+';color:'+(on?'#818cf8':'#8892aa')+';';b.onclick=()=>{window._mbPayMonth=val;renderMbTab(ct,mb,tab,box,close);};};
+    mkChip('전체',null);
+    months.forEach(m=>mkChip(m.slice(0,4)+'년 '+parseInt(m.slice(5))+'월',m));
+    const sel=window._mbPayMonth;
+    // 엔트리: 전체=합계 / 특정월=그 달 결제만(>0)
+    const entries=allGroups.map(g=>{
+      const amount=sel?(g.byMonth[sel]||0):g.total;
+      let sub,date;
+      if(sel){const pm=g.payMonths[sel];sub=g.kindLabel+' · '+parseInt(sel.slice(5))+'월 결제';date=pm?pm.date:'';}
+      else{const nMon=Object.keys(g.byMonth).filter(Boolean).length;sub=g.kindLabel+(nMon?' · '+nMon+'건 결제':' · 결제 없음');date=g.lastDate;}
+      return {name:g.name,teacher:g.teacher,amount,sub,date,sortTs:g.lastTs};
+    }).filter(e=>sel?e.amount>0:true);
+    if(!entries.length){const emp=ct.appendChild(document.createElement('div'));emp.style.cssText='text-align:center;padding:40px;color:#2a2d45;font-size:13px;';emp.textContent=(sel?'이 달 결제 내역이 없습니다':'결제 내역이 없습니다');}
     const byT={};entries.forEach(e=>{(byT[e.teacher]=byT[e.teacher]||[]).push(e);});
     const tKeys=Object.keys(byT).sort((a,b)=>a.localeCompare(b,'ko'));const multiT=tKeys.length>1;let grand=0;
     tKeys.forEach(tn=>{
       if(multiT){const sh=ct.appendChild(document.createElement('div'));sh.style.cssText='font-size:12px;font-weight:800;color:#818cf8;margin:14px 0 6px;padding-bottom:5px;border-bottom:1px solid #1e2026;';sh.textContent=tn+' 선생님';}
       byT[tn].sort((a,b)=>b.sortTs-a.sortTs).forEach(e=>{
-        grand+=e.total;
+        grand+=e.amount;
         const card=ct.appendChild(document.createElement('div'));
         card.style.cssText='background:#0f1117;border:1px solid #1e2026;border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;';
         card.innerHTML='<div style="min-width:0;"><div style="font-size:13px;font-weight:700;color:#e2e8f0;margin-bottom:3px;">'+escapeHtml(e.name)+'</div><div style="font-size:11px;color:#4a5068;">'+escapeHtml(e.sub)+(e.date?' · '+e.date:'')+'</div></div>'
-          +'<div style="font-size:15px;font-weight:800;color:'+(e.total>0?'#e2e8f0':'#4a5068')+';white-space:nowrap;">'+e.total.toLocaleString()+'원</div>';
+          +'<div style="font-size:15px;font-weight:800;color:'+(e.amount>0?'#e2e8f0':'#4a5068')+';white-space:nowrap;">'+e.amount.toLocaleString()+'원</div>';
       });
     });
-    if(entries.length){const tot=ct.appendChild(document.createElement('div'));tot.style.cssText='display:flex;justify-content:space-between;padding:12px 16px;margin-top:4px;border-top:2px solid #1e2026;font-weight:800;';tot.innerHTML='<span style="color:#8892aa;">결제완료 합계</span><span style="color:#3dc87a;">'+grand.toLocaleString()+'원</span>';}
+    if(entries.length){const tot=ct.appendChild(document.createElement('div'));tot.style.cssText='display:flex;justify-content:space-between;padding:12px 16px;margin-top:4px;border-top:2px solid #1e2026;font-weight:800;';tot.innerHTML='<span style="color:#8892aa;">결제완료 합계'+(sel?' ('+parseInt(sel.slice(5))+'월)':'')+'</span><span style="color:#3dc87a;">'+grand.toLocaleString()+'원</span>';}
   }
 }
 
