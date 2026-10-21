@@ -3541,7 +3541,7 @@ function renderSales(){
   const ct=document.getElementById('pg-sal').querySelector('.pad');ct.innerHTML='';initSalDates();
   // ── 서브탭 ──
   const stabs=ct.appendChild(el('div','sal-sub-tabs'));
-  [['sales','매출내역'],['bypkg','상품별'],['bypay','결제수단별'],['sessions','세션로그'],['refund','환불내역']].forEach(([v,l])=>{
+  [['sales','매출내역'],['bypkg','상품별'],['bypay','결제수단별'],['sessions','강사료내역'],['refund','환불내역']].forEach(([v,l])=>{
     const b=stabs.appendChild(mk('button','sal-stab'+(salSubTab===v?' on':''),l));b.onclick=()=>{
       const oldIdx=salSubTabOrder.indexOf(salSubTab);
       const newIdx=salSubTabOrder.indexOf(v);
@@ -4628,7 +4628,7 @@ let pcCalY=new Date().getFullYear();let pcCalM=new Date().getMonth();
 const PC_NAV=[
   {id:'home',label:'홈',icon:''},
   {id:'customers',label:'고객관리',icon:'',subs:[{id:'members',label:'고객 관리'},{id:'consult',label:'상담 관리'},{id:'consult_hist',label:'상담 내역'},{id:'noweek',label:'주간미수업'},{id:'nextweek',label:'차주미수업'}]},
-  {id:'sales',label:'매출관리',icon:'',adminOnly:true,subs:[{id:'all',label:'매출내역'},{id:'bypkg',label:'상품별내역'},{id:'bypay',label:'결제수단별'},{id:'sessions',label:'세션로그'},{id:'ptbilling',label:'청구관리'},{id:'refund',label:'환불내역'}]},
+  {id:'sales',label:'매출관리',icon:'',adminOnly:true,subs:[{id:'all',label:'매출내역'},{id:'bypkg',label:'상품별내역'},{id:'bypay',label:'결제수단별'},{id:'sessions',label:'강사료내역'},{id:'ptbilling',label:'청구관리'},{id:'refund',label:'환불내역'}]},
   {id:'groupclass',label:'그룹수업',icon:'',subs:[{id:'month',label:'월간 현황'},{id:'config',label:'수업 설정',adminOnly:true},{id:'members',label:'회원 현황'}]},
   {id:'calendar',label:'개인레슨 일정',icon:''},
   {id:'rooms',label:'룸 현황',icon:''},
@@ -6383,7 +6383,7 @@ function renderPcSales(ct,acts){
   const stbar=document.getElementById('pc-subtabbar');
   if(stbar){
     stbar.innerHTML='';stbar.style.display='flex';stbar.style.padding='0 24px';
-    const subMap={all:'매출내역',bypkg:'상품별내역',bypay:'결제수단별',sessions:'세션로그',ptbilling:'청구관리',refund:'환불내역'};
+    const subMap={all:'매출내역',bypkg:'상품별내역',bypay:'결제수단별',sessions:'강사료내역',ptbilling:'청구관리',refund:'환불내역'};
     Object.entries(subMap).forEach(([id,lbl])=>{
       const tab=stbar.appendChild(Object.assign(document.createElement('div'),{className:'pc-stab'+(pcSV===id?' on':''),textContent:lbl}));
       tab.onclick=()=>{pcSV=id;initPcNav();renderPcContent();};
@@ -8250,6 +8250,23 @@ function dlSmsCsv(items,curMonth){
 }
 // ── 개인레슨 청구 관리 ────────────────────────────────────────────────────
 // ── 통합 청구 관리 (그룹수업 + 개인레슨) ──────────────────────────────────
+// 청구 1건이 어떤 수업일(날짜)들로 구성됐는지 — 청구관리에 '어느 날짜'를 정확히 표시
+function grpBillDates(b){
+  const gc=groupClasses.find(g=>g.id===(b.groupClassId||b.classId));if(!gc)return [];
+  const mb=members.find(m=>m.id===b.memberId);const plan=mb&&(mb.plans||[]).find(p=>p.productType==='group'&&p.groupClassId===gc.id);
+  return grpMonthSessionDates(gc,b.month).filter(ds=>{
+    const s=grpSessMap[gc.id+'_'+ds];if(!s||s.status==='cancelled')return false;
+    if(plan&&!grpPlanActiveOn(plan,ds))return false;
+    const ext=(trainers.find(t=>t.id===effectiveGrpTrainerId(gc,ds,s))||{}).external;
+    if(!grpSessHasRoom(s)&&!ext)return false;
+    return (s.attended||[]).some(a=>a.memberId===b.memberId);
+  });
+}
+function ptBillDates(b){
+  const todayStr=_grpFmtD(new Date());
+  return slots.filter(s=>s.date.slice(0,7)===b.month&&s.date<=todayStr&&slotMemberEntries(s).some(m=>m.memberId===b.memberId&&m.planId===b.planId&&ptMemBilled(s,b.memberId))).map(s=>s.date).sort();
+}
+function _billDatesStr(kind,b){const ds=(kind==='group'?grpBillDates(b):ptBillDates(b));return ds.map(d=>{const p=d.split('-');return parseInt(p[1])+'/'+parseInt(p[2]);}).join(', ')||'-';}
 function _renderBilling(ct){
   const today=new Date();
   if(!window._billMonthOff)window._billMonthOff=0;
@@ -8274,9 +8291,9 @@ function _renderBilling(ct){
   ];
   xlBtn.onclick=()=>{
     if(!items.length){alert('다운로드할 청구 내역이 없습니다.');return;}
-    const hdr=['구분','회원명','연락처','수업/상품','횟수','청구금액','상태','결제일','결제수단'];
+    const hdr=['구분','회원명','연락처','수업/상품','횟수','수업일','청구금액','상태','결제일','결제수단'];
     const rows=[hdr.join(',')];
-    items.forEach(({kind,b,name})=>{const mb=members.find(m=>m.id===b.memberId);rows.push(['"'+(kind==='group'?'그룹수업':'개인레슨')+'"','"'+(b.memberName||'')+'"','"'+(mb?.phone||'')+'"','"'+name+'"',b.sessions+'회',b.amount,'"'+(b.paid?'결제완료':'미결제')+'"','"'+(b.paidDate||'')+'"','"'+(b.paymentMethod||'')+'"'].join(','));});
+    items.forEach(({kind,b,name})=>{const mb=members.find(m=>m.id===b.memberId);rows.push(['"'+(kind==='group'?'그룹수업':'개인레슨')+'"','"'+(b.memberName||'')+'"','"'+(mb?.phone||'')+'"','"'+name+'"',b.sessions+'회','"'+_billDatesStr(kind,b)+'"',b.amount,'"'+(b.paid?'결제완료':'미결제')+'"','"'+(b.paidDate||'')+'"','"'+(b.paymentMethod||'')+'"'].join(','));});
     const blob=new Blob(['﻿'+rows.join('\n')],{type:'text/csv;charset=utf-8;'});
     const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='청구내역_'+curMonth+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   };
@@ -8295,17 +8312,18 @@ function _renderBilling(ct){
     const tw=ct.appendChild(Object.assign(document.createElement('div'),{className:'pc-tw'}));
     const tbl=tw.appendChild(Object.assign(document.createElement('table'),{className:'pc-tbl'}));
     const hr=tbl.appendChild(document.createElement('thead')).appendChild(document.createElement('tr'));
-    ['구분','회원명','연락처','수업/상품','횟수','청구금액','상태','결제일','결제수단','처리'].forEach(h=>hr.appendChild(Object.assign(document.createElement('th'),{textContent:h})));
+    ['구분','회원명','연락처','수업/상품','횟수','수업일','청구금액','상태','결제일','결제수단','처리'].forEach(h=>hr.appendChild(Object.assign(document.createElement('th'),{textContent:h})));
     const tbody=tbl.appendChild(document.createElement('tbody'));
     items.sort((a,b)=>(a.b.paid?1:0)-(b.b.paid?1:0)||(a.b.memberName||'').localeCompare(b.b.memberName||'')).forEach(({kind,b:bill,name})=>{
       const mb=members.find(m=>m.id===bill.memberId);
       const row=tbody.appendChild(document.createElement('tr'));
       if(bill.paid)row.style.opacity='0.65';
-      [(kind==='group'?'그룹수업':'개인레슨'),bill.memberName,mb?.phone||'-',name,bill.sessions+'회',bill.amount.toLocaleString()+'원',bill.paid?'결제완료':'미결제',bill.paidDate||'-',bill.paymentMethod||'-'].forEach((v,i)=>{
+      [(kind==='group'?'그룹수업':'개인레슨'),bill.memberName,mb?.phone||'-',name,bill.sessions+'회',_billDatesStr(kind,bill),bill.amount.toLocaleString()+'원',bill.paid?'결제완료':'미결제',bill.paidDate||'-',bill.paymentMethod||'-'].forEach((v,i)=>{
         const td=row.appendChild(document.createElement('td'));td.textContent=v;
         if(i===0)td.style.cssText='font-size:11px;font-weight:700;color:'+(kind==='group'?'#fbbf24':'#818cf8')+';';
         if(i===2)td.style.cssText='color:#818cf8;font-size:12px;';
-        if(i===6)td.style.color=bill.paid?'#3dc87a':'#f87171';
+        if(i===5)td.style.cssText='font-size:11px;color:#8892aa;max-width:220px;white-space:normal;line-height:1.5;';
+        if(i===7)td.style.color=bill.paid?'#3dc87a':'#f87171';
       });
       const actTd=row.appendChild(document.createElement('td'));
       if(!bill.paid){
@@ -9354,7 +9372,7 @@ function renderMobAnalytics(ct){
 function dlSessionsXLSX(){
   if(typeof XLSX==='undefined'){alert('잠시 후 다시 시도해주세요.');return;}
   const wb=XLSX.utils.book_new();
-  const wsData=[['TheLine CRM - 세션로그 (이용권별)'],['기간: '+pcSalStart+' ~ '+pcSalEnd],[]];
+  const wsData=[['TheLine CRM - 강사료내역 (이용권별)'],['기간: '+pcSalStart+' ~ '+pcSalEnd],[]];
   wsData.push(['계약일','회원명','세션','계약료','부가세 전 계약료','세션단가','누적진행(당월제외)','이달수업','잔여수업']);
   const sd=new Date(pcSalStart),ed=new Date(pcSalEnd);ed.setHours(23,59,59);
   const _effTr=(!isAdminUser()&&curUser)?curUser:pcSalTr; // 강사는 본인 세션만(엑셀도 서로 못 봄)
@@ -9403,8 +9421,8 @@ function dlSessionsXLSX(){
     const contractDate=plan.paymentDate||(plan.addedAt?new Date(plan.addedAt).toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'}):'-');
     wsData.push([contractDate,mb.name,totalSes,paid,Math.round(paid/1.1),unitP,prevUsed,thisUsed,remain]);
   });
-  const ws=XLSX.utils.aoa_to_sheet(wsData);XLSX.utils.book_append_sheet(wb,ws,'세션로그');
-  XLSX.writeFile(wb,'세션로그_'+pcSalStart+'_'+pcSalEnd+'.xlsx');
+  const ws=XLSX.utils.aoa_to_sheet(wsData);XLSX.utils.book_append_sheet(wb,ws,'강사료내역');
+  XLSX.writeFile(wb,'강사료내역_'+pcSalStart+'_'+pcSalEnd+'.xlsx');
 }
 
 // ── 환불내역 엑셀 다운로드 ───────────────────────────────────────────────
