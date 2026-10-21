@@ -8190,8 +8190,8 @@ function buildMemberSms(memberId,curMonth,tplOverride){
   const gb=grpBillings.filter(b=>b.memberId===memberId&&b.month===curMonth);
   const pb=ptBillings.filter(b=>b.memberId===memberId&&b.month===curMonth&&(b.sessions||0)>0);
   const lines=[];let total=0;
-  gb.forEach(b=>{lines.push('▶ '+(b.groupClassName||'그룹수업')+' : '+(b.sessions||0)+'회 · '+(b.amount||0).toLocaleString()+'원');total+=b.amount||0;});
-  pb.forEach(b=>{lines.push('▶ '+(b.productName||'개인레슨')+' : '+(b.sessions||0)+'회 · '+(b.amount||0).toLocaleString()+'원');total+=b.amount||0;});
+  gb.forEach(b=>{const ds=_billDatesStr('group',b);lines.push('▶ '+(b.groupClassName||'그룹수업')+' : '+(ds&&ds!=='-'?ds+' ':'')+'('+(b.sessions||0)+'회) · '+(b.amount||0).toLocaleString()+'원');total+=b.amount||0;});
+  pb.forEach(b=>{const ds=_billDatesStr('pt',b);lines.push('▶ '+(b.productName||'개인레슨')+' : '+(ds&&ds!=='-'?ds+' ':'')+'('+(b.sessions||0)+'회) · '+(b.amount||0).toLocaleString()+'원');total+=b.amount||0;});
   const msg=intro+'\n\n['+(mb?mb.name:'')+'] 님\n'+(lines.length?lines.join('\n'):'· 이번 달 수업 내역 없음')+'\n──────────\n합계 : '+total.toLocaleString()+'원';
   return {name:mb?mb.name:'',phone:(mb&&mb.phone)||'',msg,total};
 }
@@ -8206,7 +8206,7 @@ function openSmsCfgModal(curMonth){
     box.appendChild(Object.assign(document.createElement('div'),{textContent:'미리보기'})).style.cssText='font-size:11px;font-weight:700;color:#3a3f58;letter-spacing:1px;margin:14px 0 6px;';
     const prev=box.appendChild(document.createElement('div'));prev.style.cssText='padding:12px;border-radius:8px;background:#0a0c10;border:1px solid #1e2026;font-size:12px;color:#9aa3b8;white-space:pre-wrap;line-height:1.65;max-height:200px;overflow:auto;';
     const mNum=curMonth?parseInt(curMonth.slice(5,7),10):8;const yNum=curMonth?curMonth.slice(0,4):'2026';
-    function upPrev(){const intro=ta.value.replace(/\{월\}/g,mNum).replace(/\{년\}/g,yNum);prev.textContent=intro+'\n\n[홍길동] 님\n▶ 인텐3 [수,목,금 16시30분] : 12회 · 480,000원\n▶ 60분 개인레슨 : 4회 · 400,000원\n──────────\n합계 : 880,000원';}
+    function upPrev(){const intro=ta.value.replace(/\{월\}/g,mNum).replace(/\{년\}/g,yNum);prev.textContent=intro+'\n\n[홍길동] 님\n▶ 인텐3 [수,목,금 16시30분] : 10/1, 10/3, 10/8, 10/10 (4회) · 160,000원\n▶ 60분 개인레슨 : 10/5, 10/12 (2회) · 200,000원\n──────────\n합계 : 360,000원';}
     ta.oninput=upPrev;upPrev();
     const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='18px';
     btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'기본값'})).onclick=()=>{ta.value=SMS_DEFAULT_TPL;upPrev();};
