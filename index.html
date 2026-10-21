@@ -6234,17 +6234,21 @@ function renderPcSessions(ct,acts){
       const ds=fmtD(dd);if(ds>todayStr)continue;
       const sess=grpSessMap[gc.id+'_'+ds];
       if(sess&&sess.status==='cancelled')continue;
-      if(!grpSessHasRoom(sess))continue; // 룸 배정된(실제 진행) 세션만 강사료·세션 집계 — 룸 빼면 사라짐
+      const mainTid=effectiveGrpTrainerId(gc,ds,sess);
+      const _mainExt=!!(trainers.find(t=>t.id===mainTid)||{}).external;
+      const _aTid=sess&&sess.assistantTrainerId;const _asstExt=!!(_aTid&&(trainers.find(t=>t.id===_aTid)||{}).external);
+      const _hasRoom=grpSessHasRoom(sess);
+      // 룸 배정된 세션만 집계(룸 빼면 사라짐). 단 외부강사(메인/보조)면 룸 없이도 발생
+      if(!_hasRoom&&!_mainExt&&!_asstExt)continue;
       const attended=((sess&&sess.reservations)||[]).length;
       const t2=(gc.time||'').slice(0,5);
-      // 메인 강사 (이 날짜 페이 오버라이드 있으면 우선)
-      const mainTid=effectiveGrpTrainerId(gc,ds,sess);
+      // 메인 강사 (이 날짜 페이 오버라이드 있으면 우선) — 룸 있거나 메인이 외부강사면 발생
       const mainPay=(sess&&sess.mainPay!=null)?sess.mainPay:(gc.trainerPay||0);
-      if(!effTr||mainTid===effTr)rows.push({kind:'group',date:ds,time:t2,trainerId:mainTid,name:'-',type:'그룹수업',memo:gc.name,used:attended+'명',rem:'-',pay:canSeePay(mainTid)?(mainPay||null):null});
-      // 보조 강사 (이 날짜만)
-      if(sess&&sess.assistantTrainerId){
-        const aTid=sess.assistantTrainerId;const aPay=(sess.assistantPay!=null)?sess.assistantPay:0;
-        if(!effTr||aTid===effTr)rows.push({kind:'group',date:ds,time:t2,trainerId:aTid,name:'(보조)',type:'그룹수업',memo:gc.name+' · 보조',used:attended+'명',rem:'-',pay:canSeePay(aTid)?(aPay||null):null});
+      if((_hasRoom||_mainExt)&&(!effTr||mainTid===effTr))rows.push({kind:'group',date:ds,time:t2,trainerId:mainTid,name:_mainExt?'(외부)':'-',type:'그룹수업',memo:gc.name+(_mainExt&&!_hasRoom?' · 외부강사':''),used:attended+'명',rem:'-',pay:canSeePay(mainTid)?(mainPay||null):null});
+      // 보조 강사 (이 날짜만) — 룸 있거나 보조가 외부강사면 발생
+      if(_aTid){
+        const aPay=(sess.assistantPay!=null)?sess.assistantPay:0;
+        if((_hasRoom||_asstExt)&&(!effTr||_aTid===effTr))rows.push({kind:'group',date:ds,time:t2,trainerId:_aTid,name:'(보조)'+(_asstExt?'(외부)':''),type:'그룹수업',memo:gc.name+' · 보조',used:attended+'명',rem:'-',pay:canSeePay(_aTid)?(aPay||null):null});
       }
     }
   });
@@ -7508,6 +7512,11 @@ function openPcStaffModal(tr2, onSave) {
       btn.onclick = () => {selColor = i; colBtns.forEach((b,j) => b.style.borderColor = j===i?'#fff':'transparent');};
       return btn;
     });
+    // 외부강사: 룸 설정 없이 그룹수업 등록만으로 강사료 발생 (가끔 오는 외부 강사)
+    const extF=box.appendChild(document.createElement('div'));extF.style.cssText='margin:6px 0 10px;';
+    const extLab=extF.appendChild(document.createElement('label'));extLab.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#c4cde8;';
+    const extChk=extLab.appendChild(document.createElement('input'));extChk.type='checkbox';extChk.style.cssText='width:16px;height:16px;cursor:pointer;';if(tr2&&tr2.external)extChk.checked=true;
+    extLab.appendChild(Object.assign(document.createElement('span'),{textContent:'외부강사 (룸 설정 없이 그룹수업만으로 강사료 발생)'}));
     // 레슨 강사료 (개인/듀엣/트리오 × 수업시간별 · 회당) — 세션로그에서 (세션 강사 × 레슨종류 × 수업시간)으로 자동 책정
     const DURS=[30,60,90,120,150,180,210];
     const dpF=box.appendChild(_f('레슨 강사료 (개인/듀엣/트리오 · 회당)'));
@@ -7533,13 +7542,13 @@ function openPcStaffModal(tr2, onSave) {
       const _cp=k=>{const o={};DURS.forEach(d=>{const v=parseInt(dpInputs[k][d].value)||0;if(v)o[d]=v;});return o;};
       const durationPay=_cp('solo'),duetPay=_cp('duet'),trioPay=_cp('trio');
       if (tr2) {
-        tr2.name = name; tr2.role = roleI.value.trim(); tr2.phone = phoneI.value.trim(); tr2.color = selColor; tr2.durationPay = durationPay; tr2.duetPay = duetPay; tr2.trioPay = trioPay;
+        tr2.name = name; tr2.role = roleI.value.trim(); tr2.phone = phoneI.value.trim(); tr2.color = selColor; tr2.durationPay = durationPay; tr2.duetPay = duetPay; tr2.trioPay = trioPay; tr2.external = extChk.checked;
         if (sabanI.value) tr2.saban = sabanI.value;
         sv('jbog10_tr', trainers);
       } else {
         const saban = sabanI.value;
         if (!saban) {alert('로그인 번호를 입력해주세요.'); return;}
-        trainers.push({id:'tr'+Date.now(), name, role:roleI.value.trim(), phone:phoneI.value.trim(), color:selColor, saban, durationPay, duetPay, trioPay});
+        trainers.push({id:'tr'+Date.now(), name, role:roleI.value.trim(), phone:phoneI.value.trim(), color:selColor, saban, durationPay, duetPay, trioPay, external:extChk.checked});
         sv('jbog10_tr', trainers);
       }
       close(); renderPcContent(); updatePcUser();
