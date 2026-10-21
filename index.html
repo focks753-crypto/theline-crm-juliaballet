@@ -1206,6 +1206,8 @@ let ptBillings=ld('jbog10_ptbl',[]);let ptBillMonthOff=0;
 // ── 룸(방) ──
 let rooms=ld('jbog10_rooms',null);
 if(!rooms||!Array.isArray(rooms)||!rooms.length){rooms=['A-1','A-2','B-1','B-2','C','D','E','F','G'].map((n,i)=>({id:'room'+(i+1),name:n,order:i}));}
+// 외부(출강) 수업용 '외부 홀' 룸 1개 보장 — 룸 선택 목록에 노출
+if(Array.isArray(rooms)&&!rooms.some(r=>r&&r.name==='외부 홀')){const _mo=Math.max(-1,...rooms.map(r=>r.order||0));rooms.push({id:'room_ext',name:'외부 홀',order:_mo+1});}
 let roomDate=(function(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})(); // 룸 현황 탭 선택 날짜
 // 예약 차단 기간: [{id,start:'YYYY-MM-DDTHH:MM',end,memo}] — 이 기간엔 관리자만 룸/수업 등록 가능
 let roomBlocks=ld('jbog10_roomblocks',[]);if(!Array.isArray(roomBlocks))roomBlocks=[];
