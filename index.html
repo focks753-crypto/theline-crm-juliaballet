@@ -8840,13 +8840,19 @@ function openGrpSessionModal(gc,date,sess,prefill){
       const trSel=trTop.appendChild(document.createElement('select'));trSel.className='pcm-select';trSel.style.cssText='flex:1;padding:6px 10px;font-size:12px;';
       const _s0=grpSessMap[gc.id+'_'+date];const _sel=effectiveGrpTrainerId(gc,date,_s0)||'';
       [{v:'',l:'미지정'},...trainers.map(t=>({v:t.id,l:t.name+(t.id===gc.trainerId?' (기본담당)':'')}))].forEach(o=>{const op=document.createElement('option');op.value=o.v;op.textContent=o.l;if(o.v===_sel)op.selected=true;trSel.appendChild(op);});
+      // 대타 강사료 (이 날짜) — 비우면 수업 기본 페이 적용
+      const subPayRow=trWrap.appendChild(document.createElement('div'));subPayRow.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+      subPayRow.appendChild(Object.assign(document.createElement('span'),{textContent:'대타 강사료'})).style.cssText='font-size:12px;color:#6b7494;white-space:nowrap;';
+      const subPayI=subPayRow.appendChild(document.createElement('input'));subPayI.type='number';subPayI.min='0';subPayI.placeholder='기본 '+((gc.trainerPay||0).toLocaleString())+'원';subPayI.className='pcm-input';subPayI.style.cssText='flex:1;padding:6px 9px;font-size:12px;';subPayI.value=(_s0&&_s0.mainPay!=null)?_s0.mainPay:'';
       const btnRow=trWrap.appendChild(document.createElement('div'));btnRow.style.cssText='display:flex;gap:6px;';
       const oneBtn=btnRow.appendChild(Object.assign(document.createElement('button'),{textContent:'이 날짜만 대타'}));
       oneBtn.style.cssText='flex:1;padding:7px;border-radius:7px;border:1px solid #2a3050;background:transparent;color:#818cf8;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;';
       oneBtn.onclick=async()=>{
         const s=grpSessMap[gc.id+'_'+date]||{classId:gc.id,date,status:'active',reservations:[]};
-        s.trainerId=trSel.value||null;await svGrpSess(s);_refreshSub();renderPcContent();
-        alert('이 날짜('+date+')만 대타로 지정되었습니다.');
+        s.trainerId=trSel.value||null;
+        s.mainPay=subPayI.value===''?null:(parseInt(subPayI.value)||0); // 대타 강사료(입력 시 적용, 비우면 기본)
+        await svGrpSess(s);_refreshSub();renderPcContent();
+        alert('이 날짜('+date+')만 대타로 지정되었습니다.'+(s.mainPay!=null?'\n대타 강사료: '+s.mainPay.toLocaleString()+'원':''));
       };
       const fromBtn=btnRow.appendChild(Object.assign(document.createElement('button'),{textContent:'이 날짜부터 담당 변경'}));
       fromBtn.style.cssText='flex:1;padding:7px;border-radius:7px;border:1px solid #818cf8;background:rgba(129,140,248,.1);color:#818cf8;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;';
