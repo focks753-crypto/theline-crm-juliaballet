@@ -6246,7 +6246,7 @@ function renderPcSessions(ct,acts){
   // 개인레슨/OT/상담 슬롯
   slots.forEach(s=>{
     const d=new Date(s.date);if(d<sd||d>ed)return;
-    if(effTr&&s.trainerId!==effTr)return;
+    if(effTr&&s.trainerId!==effTr&&s.assistantTrainerId!==effTr)return; // 메인 또는 보조가 본인이면 포함
     const mb=s.memberId?members.find(m=>m.id===s.memberId):null;
     const plan=s.planId&&mb?(mb.plans||[]).find(p=>p.id===s.planId):null;
     const isOC=s.type==='OT'||s.type==='상담';
@@ -6271,7 +6271,12 @@ function renderPcSessions(ct,acts){
       ptPay=(tbl&&dur!=null)?(tbl[dur]||0):0;
     }
     const nameVal=isLesson?(slotMemberLabel(s)||'-'):(mb?mb.name:(s.memo&&s.type==='상담'?s.memo.split('\n')[0]:s.memo||'-'));
-    rows.push({kind:'pt',date:s.date,time:(s.time||'').slice(0,5),trainerId:s.trainerId,name:nameVal,type:dispType,memo,used:isOC?'-':(plan?getPlanUsed(plan.id)+'회':'-'),rem:isOC?'-':(plan?getPlanRemain(plan)+'':'-'),pay:canSeePay(s.trainerId)?ptPay:null});
+    if(!effTr||s.trainerId===effTr)rows.push({kind:'pt',date:s.date,time:(s.time||'').slice(0,5),trainerId:s.trainerId,name:nameVal,type:dispType,memo,used:isOC?'-':(plan?getPlanUsed(plan.id)+'회':'-'),rem:isOC?'-':(plan?getPlanRemain(plan)+'':'-'),pay:canSeePay(s.trainerId)?ptPay:null});
+    // 개인레슨 보조강사 (이 레슨만) — 룸+청구대상 조건일 때 강사료 발생
+    if(s.assistantTrainerId&&isLesson&&s.date<=todayStr&&s.roomId&&ptSlotHasBilled(s)&&(!effTr||s.assistantTrainerId===effTr)){
+      const aPay=(s.assistantPay!=null)?s.assistantPay:0;
+      rows.push({kind:'pt',date:s.date,time:(s.time||'').slice(0,5),trainerId:s.assistantTrainerId,name:nameVal+' (보조)',type:dispType,memo:memo+' · 보조',used:'-',rem:'-',pay:canSeePay(s.assistantTrainerId)?aPay:null});
+    }
   });
   // 그룹수업 진행 세션(오늘까지, 폐강 제외) — 강사 페이 = 진행횟수 × 회당 페이
   groupClasses.forEach(gc=>{
@@ -8866,6 +8871,18 @@ function openGrpSessionModal(gc,date,sess,prefill){
         await svGrpClass(gc);_refreshSub();renderPcContent();
         alert(date+'부터 담당 강사가 변경되었습니다.');
       };
+      // 대타 취소 (이 날짜 대타가 지정돼 있을 때만) — 기본 담당·기본 페이로 되돌림
+      if(_s0&&_s0.trainerId){
+        const cancelSub=trWrap.appendChild(Object.assign(document.createElement('button'),{textContent:'대타 취소 (기본 담당으로)'}));
+        cancelSub.style.cssText='width:100%;margin-top:6px;padding:7px;border-radius:7px;border:1px solid rgba(248,113,113,.4);background:transparent;color:#f87171;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;';
+        cancelSub.onclick=async()=>{
+          if(!confirm('이 날짜('+date+') 대타를 취소하고 기본 담당으로 되돌릴까요?\n(대타 강사료도 기본 페이로 돌아갑니다)'))return;
+          const s=grpSessMap[gc.id+'_'+date];if(!s){renderPcContent();return;}
+          s.trainerId=null;s.mainPay=null;
+          await svGrpSess(s);_refreshSub();renderPcContent();close();
+          alert('대타가 취소되었습니다. 기본 담당으로 되돌렸습니다.');
+        };
+      }
     }
     // 강사료 · 보조강사 (이 날짜만) — 관리자 전용
     if(!isCancelled&&isAdminUser()){
@@ -9871,6 +9888,7 @@ function openPcSlotDetail(slotId){
         ['강사',tr2?tr2.name:'-'],
         ['회원',(s.members&&s.members.length)?(slotMemberNamesFull(s)+' ('+(s.lessonKind==='trio'?'트리오':'듀엣')+')'):(mb?mb.name+(mb.phone?' · '+mb.phone:''):'-')],
       ];
+      if(s.assistantTrainerId){rows.push(['보조강사',(trainers.find(t=>t.id===s.assistantTrainerId)||{}).name||'-']);}
       if(mb&&s.planId){
         const plan=(mb.plans||[]).find(p=>p.id===s.planId);
         if(plan){const rem=getPlanRemain(plan);rows.push(['수업권',(plan.productName||plan.sessions+'회권')+' · 잔여 '+rem+'회']);}
@@ -9952,6 +9970,27 @@ function openPcSlotDetail(slotId){
         });
       }
       renderAtt();
+    }
+
+    // ── 보조강사 (이 레슨) — 관리자 전용, 그룹수업과 동일 개념 ──
+    if(_isLessonSlot&&isAdminUser()){
+      const acard=box.appendChild(document.createElement('div'));
+      acard.style.cssText='background:#0f1117;border:1px solid #1e2026;border-radius:10px;padding:14px 16px;margin-bottom:16px;';
+      acard.appendChild(Object.assign(document.createElement('div'),{textContent:'보조강사 (이 레슨)'})).style.cssText='font-size:12px;font-weight:800;color:#818cf8;margin-bottom:10px;';
+      const aRow=acard.appendChild(document.createElement('div'));aRow.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+      const aSel=aRow.appendChild(document.createElement('select'));aSel.className='pcm-select';aSel.style.cssText='flex:1;min-width:120px;padding:6px 10px;font-size:12px;';
+      [{v:'',l:'보조강사 없음'},...trainers.filter(t=>t.id!==s.trainerId).map(t=>({v:t.id,l:t.name}))].forEach(o=>{const op=document.createElement('option');op.value=o.v;op.textContent=o.l;if(o.v===(s.assistantTrainerId||''))op.selected=true;aSel.appendChild(op);});
+      const aPayI=aRow.appendChild(document.createElement('input'));aPayI.type='number';aPayI.min='0';aPayI.placeholder='보조 강사료';aPayI.className='pcm-input';aPayI.style.cssText='width:130px;padding:6px 9px;font-size:12px;';aPayI.value=(s.assistantPay!=null)?s.assistantPay:'';
+      const aSave=acard.appendChild(Object.assign(document.createElement('button'),{textContent:'보조강사 저장'}));
+      aSave.style.cssText='width:100%;margin-top:10px;padding:7px;border-radius:7px;border:1px solid #818cf8;background:rgba(129,140,248,.1);color:#818cf8;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;';
+      aSave.onclick=()=>{
+        if(!requireLogin())return;
+        s.assistantTrainerId=aSel.value||null;
+        s.assistantPay=(aSel.value&&aPayI.value!=='')?(parseInt(aPayI.value)||0):null;
+        sv('jbog10_sl',slots);renderInfo();renderPcContent();
+        alert(aSel.value?'보조강사가 저장되었습니다.':'보조강사가 해제되었습니다.');
+      };
+      acard.appendChild(Object.assign(document.createElement('div'),{textContent:'룸 배정된 진행 레슨만 보조 강사료가 강사료내역에 발생합니다.'})).style.cssText='font-size:10px;color:#3a3f58;margin-top:6px;line-height:1.5;';
     }
 
     // 수정 폼 (편집모드)
