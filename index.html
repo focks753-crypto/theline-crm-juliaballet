@@ -1194,7 +1194,7 @@ async function centerLogin(pw){
   await firebase.auth().signInWithEmailAndPassword(CENTER_EMAIL,pw);
   // 잠금(익명 비활성) 이후에도 동작하도록, 로그인 성공 후 데이터 재로드
   try{await loadFromFirebase();
-    trainers=ld('jbog10_tr',[]);slots=normSlots(ld('jbog10_sl',[]));members=ld('jbog10_mb',[]);notices=ld('jbog10_nt',[]);packages=ld('jbog10_pkg',[]);consultations=ld('jbog10_cs',[]);products=ld('jbog10_pr',[]);refunds=ld('jbog10_rf',[]);groupClasses=ld('jbog10_gcl',[]);
+    trainers=ld('jbog10_tr',[]);slots=normSlots(ld('jbog10_sl',[]));members=ld('jbog10_mb',[]);notices=ld('jbog10_nt',[]);packages=ld('jbog10_pkg',[]);consultations=ld('jbog10_cs',[]);products=ld('jbog10_pr',[]);refunds=ld('jbog10_rf',[]);groupClasses=ld('jbog10_gcl',[]);trainerBonuses=ld('jbog10_tbonus',[]);if(!Array.isArray(trainerBonuses))trainerBonuses=[];
     curUser=ld('jbog10_cu',null);if(curUser&&!trainers.find(t=>t.id===curUser)){curUser=null;}
   }catch(e){}
 }
@@ -1203,6 +1203,7 @@ let weekOff=0;let calView='week';
 let groupClasses=ld('jbog10_gcl',[]);let grpSessMap={};let loadedGrpMonths=new Set();let grpLoaded=false;let grpMonthOff=0;let grpV='month';let grpSelDate='';
 let grpBillings=ld('jbog10_gbl',[]);
 let ptBillings=ld('jbog10_ptbl',[]);let ptBillMonthOff=0;
+let trainerBonuses=ld('jbog10_tbonus',[]);if(!Array.isArray(trainerBonuses))trainerBonuses=[]; // 강사료 수당(임의 추가) [{id,trainerId,date,memo,amount}]
 // ── 룸(방) ──
 let rooms=ld('jbog10_rooms',null);
 if(!rooms||!Array.isArray(rooms)||!rooms.length){rooms=['A-1','A-2','B-1','B-2','C','D','E','F','G'].map((n,i)=>({id:'room'+(i+1),name:n,order:i}));}
@@ -6168,6 +6169,33 @@ function openPcPayment(mbId,parentBox,parentClose){
 
 
 
+// ── 강사료 수당(임의 추가) 모달 ──
+function openTrainerBonusModal(onDone){
+  if(!requireLogin())return;
+  const tid0=(pcSalTr||(trainers[0]&&trainers[0].id)||'');
+  pcModal((box,close)=>{
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-ttl',textContent:'강사료 수당 추가'}));
+    box.appendChild(Object.assign(document.createElement('div'),{className:'pcm-sub',textContent:'임의 수당을 강사료내역에 추가합니다 (강사·날짜·내용·금액).'}));
+    const tF=box.appendChild(_f('강사',true));const tS=tF.appendChild(_sel(trainers.map(t=>({v:t.id,l:t.name}))));if(tid0)tS.value=tid0;
+    const r2=box.appendChild(document.createElement('div'));r2.className='pcm-row2';
+    const dF=r2.appendChild(_f('날짜',true));const dI=dF.appendChild(_inp(''));dI.type='date';dI.value=_grpFmtD(new Date());
+    const aF=r2.appendChild(_f('금액 (원)',true));const aI=aF.appendChild(_inp('예) 50,000'));aI.oninput=function(){this.value=fmtMoney(this.value);};
+    const mF=box.appendChild(_f('내용',true));const mI=mF.appendChild(_inp('예) 대회 지도 수당'));
+    const btns=box.appendChild(document.createElement('div'));btns.className='pcm-btns';btns.style.marginTop='18px';
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=close;
+    btns.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'추가'})).onclick=()=>{
+      const amt=parseMoney(aI.value)||0;const memo=mI.value.trim();
+      if(!tS.value){alert('강사를 선택해주세요.');return;}
+      if(!amt){alert('금액을 입력해주세요.');return;}
+      if(!memo){alert('내용을 입력해주세요.');return;}
+      if(!dI.value){alert('날짜를 선택해주세요.');return;}
+      trainerBonuses.push({id:'bn'+Date.now()+'_'+Math.random().toString(36).slice(2),trainerId:tS.value,date:dI.value,memo,amount:amt});
+      sv('jbog10_tbonus',trainerBonuses);
+      alert('✅ 수당이 추가되었습니다.\n'+memo+' · '+amt.toLocaleString()+'원');
+      close();if(onDone)onDone();
+    };
+  });
+}
 // ── PC 세션로그 ─────────────────────────────────────────────────────────
 function renderPcSessions(ct,acts){
   if(!pcSalStart){const n=new Date();pcSalStart=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-01';const l=new Date(n.getFullYear(),n.getMonth()+1,0);pcSalEnd=l.getFullYear()+'-'+String(l.getMonth()+1).padStart(2,'0')+'-'+String(l.getDate()).padStart(2,'0');}
@@ -6187,12 +6215,13 @@ function renderPcSessions(ct,acts){
   trainers.forEach(t=>{const o=trs.appendChild(document.createElement('option'));o.value=t.id;o.textContent=t.name;if(t.id===pcSalTr)o.selected=true;});
   trs.onchange=e=>pcSalTr=e.target.value;
   const typeSel=fb.appendChild(document.createElement('select'));typeSel.className='pcm-select';typeSel.style.cssText='width:110px;padding:9px 12px;';
-  [{v:'',l:'전체 유형'},{v:'pt',l:'개인레슨'},{v:'group',l:'그룹수업'},{v:'OT',l:'OT'},{v:'상담',l:'상담'},{v:'기타',l:'기타'}].forEach(({v,l})=>{
+  [{v:'',l:'전체 유형'},{v:'pt',l:'개인레슨'},{v:'group',l:'그룹수업'},{v:'OT',l:'OT'},{v:'상담',l:'상담'},{v:'수당',l:'수당'},{v:'기타',l:'기타'}].forEach(({v,l})=>{
     const o=typeSel.appendChild(document.createElement('option'));o.value=v;o.textContent=l;if(v===pcSesType)o.selected=true;
   });
   typeSel.onchange=e=>pcSesType=e.target.value;
   fb.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn pri',textContent:'조회'})).onclick=()=>renderPcContent();
   fb.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn xl-btn',textContent:'⬇ 엑셀'})).onclick=()=>dlSessionsXLSX();
+  if(isAdminUser()){const bnBtn=fb.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'+ 수당 추가'}));bnBtn.style.cssText='border-color:#fbbf24;color:#fbbf24;font-weight:700;';bnBtn.onclick=()=>openTrainerBonusModal(()=>renderPcContent());}
 
   // ── 퀵 버튼 ──
   const qb=ct.appendChild(Object.assign(document.createElement('div'),{}));qb.style.cssText='display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;';
@@ -6270,9 +6299,16 @@ function renderPcSessions(ct,acts){
       }
     }
   });
+  // 수당(임의 추가) 행 — 기간/강사 필터 적용
+  (trainerBonuses||[]).forEach(bn=>{
+    if(!bn||!bn.date)return;if(bn.date<pcSalStart||bn.date>pcSalEnd)return;
+    if(effTr&&bn.trainerId!==effTr)return;
+    rows.push({kind:'bonus',date:bn.date,time:'-',trainerId:bn.trainerId,name:'-',type:'수당',memo:bn.memo||'수당',used:'-',rem:'-',pay:canSeePay(bn.trainerId)?(bn.amount||0):null,bonusId:bn.id});
+  });
   // 유형 필터
   if(pcSesType){
     rows=rows.filter(r=>{
+      if(r.kind==='bonus')return pcSesType==='수당';
       if(pcSesType==='pt')return r.kind==='pt'&&(r.type||'').includes('레슨');
       if(pcSesType==='group')return r.kind==='group';
       if(pcSesType==='기타')return r.kind==='pt'&&r.type!=='OT'&&r.type!=='상담'&&!(r.type||'').includes('레슨');
@@ -6302,7 +6338,8 @@ function renderPcSessions(ct,acts){
     const tr2=trainers.find(t=>t.id===r.trainerId);
     const feeVal=(r.pay!=null&&r.pay>0)?r.pay.toLocaleString()+'원':'-';
     const row=tbody.appendChild(document.createElement('tr'));
-    if(r.kind==='group')row.style.cssText='background:rgba(56,189,248,.04);';
+    if(r.kind==='bonus')row.style.cssText='background:rgba(251,191,36,.08);';
+    else if(r.kind==='group')row.style.cssText='background:rgba(56,189,248,.04);';
     else if(r.type==='OT')row.style.cssText='background:rgba(251,191,36,.04);';
     else if(r.type==='상담')row.style.cssText='background:rgba(129,140,248,.04);';
     [r.date,r.time,tr2?tr2.name:'-',r.name,r.type,r.memo,r.used,r.rem,feeVal].forEach((v,ci)=>{
@@ -6312,10 +6349,17 @@ function renderPcSessions(ct,acts){
         else if((r.type||'').includes('레슨'))td.style.color='#3dc87a';
         else if(r.type==='OT')td.style.color='#fbbf24';
         else if(r.type==='상담')td.style.color='#818cf8';
+        else if(r.type==='수당')td.style.color='#fbbf24';
         td.style.fontWeight='700';
       }
       if(ci===8&&feeVal!=='-'){td.style.color='#fbbf24';td.style.fontWeight='700';}
     });
+    // 수당 행은 관리자가 삭제 가능 (수업료 셀에 × 버튼)
+    if(r.kind==='bonus'&&isAdm){
+      const ftd=row.lastElementChild;const del=ftd.appendChild(document.createElement('button'));del.textContent='×';del.title='수당 삭제';
+      del.style.cssText='margin-left:8px;width:20px;height:20px;border-radius:5px;border:1px solid rgba(248,113,113,.4);background:transparent;color:#f87171;font-size:13px;cursor:pointer;line-height:1;';
+      del.onclick=()=>{if(!requireLogin())return;if(!confirm('이 수당을 삭제할까요?'))return;trainerBonuses=trainerBonuses.filter(x=>x.id!==r.bonusId);sv('jbog10_tbonus',trainerBonuses);renderPcContent();};
+    }
   });
   if(!rows.length){
     const tr3=tbody.appendChild(document.createElement('tr'));
