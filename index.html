@@ -1236,19 +1236,27 @@ function slotDurationMin(s){
   }
   return 50;
 }
+// 세션/슬롯의 룸 배정 → [{roomId,start,end}]. roomSlots(룸별 시간대) 우선, 없으면 roomIds/roomId를 (시작~시작+소요)로 환산
+function roomSlotsOf(s,startHint,dur){
+  if(s&&Array.isArray(s.roomSlots)&&s.roomSlots.length)return s.roomSlots.filter(x=>x&&x.roomId&&x.start&&x.end);
+  const ids=(s&&s.roomIds&&s.roomIds.length)?s.roomIds:((s&&s.roomId)?[s.roomId]:[]);
+  const st=startHint||(s&&s.time)||'';if(!st)return [];const en=_mh(Math.min(_hm(st)+(dur||50),1439));
+  return ids.map(rid=>({roomId:rid,start:st,end:en}));
+}
 // 특정 날짜 룸 점유: {roomId:[{startMin,endMin,label,kind,id,trainerId,color,slot,gc}]}
 function roomOccupancy(dateStr){
   const occ={};
-  slots.filter(s=>s.date===dateStr&&s.roomId).forEach(s=>{
-    const st=_hm(s.time);const du=slotDurationMin(s);const tr=trainers.find(t=>t.id===s.trainerId);
-    (occ[s.roomId]=occ[s.roomId]||[]).push({startMin:st,endMin:st+du,label:slotMemberLabel(s)||s.memo||s.type||'개인',kind:'pt',id:s.id,slot:s,trainerId:s.trainerId,color:tr?getTrainerColor(tr).dot:'#818cf8'});
+  slots.filter(s=>s.date===dateStr).forEach(s=>{
+    const segs=roomSlotsOf(s,s.time,slotDurationMin(s));if(!segs.length)return;
+    const tr=trainers.find(t=>t.id===s.trainerId);
+    segs.forEach(seg=>{(occ[seg.roomId]=occ[seg.roomId]||[]).push({startMin:_hm(seg.start),endMin:_hm(seg.end),label:slotMemberLabel(s)||s.memo||s.type||'개인',kind:'pt',id:s.id,slot:s,trainerId:s.trainerId,color:tr?getTrainerColor(tr).dot:'#818cf8'});});
   });
   Object.keys(grpSessMap).forEach(k=>{
     if(!k.endsWith('_'+dateStr))return;const ss=grpSessMap[k];if(!ss||ss.status==='cancelled')return;
-    const rids=(ss.roomIds&&ss.roomIds.length)?ss.roomIds:(ss.roomId?[ss.roomId]:[]);if(!rids.length)return;
     const gc=groupClasses.find(g=>g.id===ss.classId);if(!gc)return;
-    const st=_hm(ss.time||gc.time);const du=ss.duration||gc.duration||60;const tId=effectiveGrpTrainerId(gc,dateStr,ss);const tr=trainers.find(t=>t.id===tId);
-    rids.forEach(rid=>{(occ[rid]=occ[rid]||[]).push({startMin:st,endMin:st+du,label:gc.name,kind:'group',id:k,gc,trainerId:tId,color:tr?getTrainerColor(tr).dot:'#fbbf24'});});
+    const segs=roomSlotsOf(ss,ss.time||gc.time,ss.duration||gc.duration||60);if(!segs.length)return;
+    const tId=effectiveGrpTrainerId(gc,dateStr,ss);const tr=trainers.find(t=>t.id===tId);
+    segs.forEach(seg=>{(occ[seg.roomId]=occ[seg.roomId]||[]).push({startMin:_hm(seg.start),endMin:_hm(seg.end),label:gc.name,kind:'group',id:k,gc,trainerId:tId,color:tr?getTrainerColor(tr).dot:'#fbbf24'});});
   });
   return occ;
 }
@@ -1282,6 +1290,55 @@ function fillTimeSelect(sel,dateStr,roomId,durMin,curTime,excludeId){
     sel.appendChild(o);
   });
   sel.value=prev||'';
+}
+// 재사용 룸 배정 UI: 시간 + 룸(최대 2개). 룸 2개일 때만 룸별 시간대(30분 단위) 입력 노출.
+// opt: {date,dur,excludeId,initTime,initSlots:[{roomId,start,end}],onChange(roomSlots,time)}
+function mountRoomAssigner(host,opt){
+  const date=opt.date,exId=opt.excludeId,dur=opt.dur||50;
+  const T30=[];for(let m=0;m<24*60;m+=30)T30.push(_mh(m));
+  host.innerHTML='';
+  const timeRow=host.appendChild(document.createElement('div'));timeRow.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+  timeRow.appendChild(Object.assign(document.createElement('span'),{textContent:'시간'})).style.cssText='font-size:12px;color:#6b7494;white-space:nowrap;';
+  const timeSel=timeRow.appendChild(document.createElement('select'));timeSel.className='pcm-select';timeSel.style.cssText='flex:1;padding:6px 10px;font-size:12px;';
+  host.appendChild(Object.assign(document.createElement('div'),{textContent:'룸(방) · 최대 2개'})).style.cssText='font-size:12px;color:#6b7494;margin-bottom:6px;';
+  const roomsBox=host.appendChild(document.createElement('div'));
+  const hint=host.appendChild(document.createElement('div'));hint.style.cssText='font-size:11px;color:#4a5068;margin:0 0 6px;display:none;';hint.textContent='룸 2개: 각 룸을 쓰는 시간대를 30분 단위로 지정하세요.';
+  const addBtn=host.appendChild(document.createElement('button'));addBtn.type='button';addBtn.textContent='+ 룸 추가';
+  addBtn.style.cssText='margin-top:2px;padding:6px 12px;border-radius:7px;border:1px dashed #2a3050;background:transparent;color:#818cf8;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;';
+  const rows=[];
+  const _start=()=>timeSel.value||opt.initTime||'';
+  const _defEnd=()=>{const st=_start();return st?_mh(Math.min(_hm(st)+dur,1439)):'';};
+  function _collect(){const multi=rows.length>1;const out=[];rows.forEach(r=>{if(!r.roomSel.value)return;out.push({roomId:r.roomSel.value,start:multi?r.startSel.value:_start(),end:multi?r.endSel.value:_defEnd()});});return out;}
+  function _refresh(){
+    const multi=rows.length>1;hint.style.display=multi?'block':'none';
+    rows.forEach(r=>{fillRoomSelect(r.roomSel,date,_hm(_start()),dur,r.roomSel.value||'',exId);r.timeWrap.style.display=multi?'inline-flex':'none';});
+    rows.forEach((r,i)=>{const others=rows.filter((_,j)=>j!==i).map(x=>x.roomSel.value).filter(Boolean);[...r.roomSel.options].forEach(o=>{if(o.value&&others.includes(o.value))o.disabled=true;});});
+    addBtn.style.display=(rows.length<2&&roomsSorted().length>rows.length)?'inline-block':'none';
+  }
+  function _fillTime(){fillTimeSelect(timeSel,date,(rows[0]&&rows[0].roomSel.value)||null,dur,timeSel.value||opt.initTime,exId);}
+  function _save(){opt.onChange&&opt.onChange(_collect(),_start());}
+  function _addRow(seg,allowRemove){
+    const wrap=roomsBox.appendChild(document.createElement('div'));wrap.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;';
+    const roomSel=wrap.appendChild(document.createElement('select'));roomSel.className='pcm-select';roomSel.style.cssText='flex:1;min-width:110px;padding:6px 10px;font-size:12px;';
+    fillRoomSelect(roomSel,date,_hm(_start()),dur,(seg&&seg.roomId)||'',exId);
+    const timeWrap=wrap.appendChild(document.createElement('span'));timeWrap.style.cssText='display:none;align-items:center;gap:4px;';
+    const startSel=document.createElement('select');startSel.className='pcm-select';startSel.style.cssText='padding:5px 7px;font-size:12px;';
+    const endSel=document.createElement('select');endSel.className='pcm-select';endSel.style.cssText='padding:5px 7px;font-size:12px;';
+    T30.forEach(t=>{startSel.appendChild(new Option(t,t));endSel.appendChild(new Option(t,t));});
+    startSel.value=(seg&&seg.start)||_start()||T30[0];endSel.value=(seg&&seg.end)||_defEnd()||T30[0];
+    timeWrap.appendChild(startSel);timeWrap.appendChild(Object.assign(document.createElement('span'),{textContent:'~'})).style.color='#6b7494';timeWrap.appendChild(endSel);
+    const r={roomSel,startSel,endSel,timeWrap,wrap};
+    roomSel.onchange=()=>{_refresh();_save();};startSel.onchange=()=>_save();endSel.onchange=()=>_save();
+    if(allowRemove){const rm=wrap.appendChild(document.createElement('button'));rm.type='button';rm.textContent='×';rm.style.cssText='width:28px;height:30px;border-radius:7px;border:1px solid #2a3050;background:transparent;color:#8892b0;font-size:16px;cursor:pointer;';rm.onclick=()=>{const i=rows.indexOf(r);if(i>=0)rows.splice(i,1);wrap.remove();_refresh();_save();};}
+    rows.push(r);
+  }
+  _fillTime();
+  const init=(opt.initSlots&&opt.initSlots.length)?opt.initSlots:[];
+  if(init.length){init.forEach((seg,i)=>_addRow(seg,i>0));}else{_addRow(null,false);}
+  _refresh();_fillTime();
+  addBtn.onclick=()=>{_addRow(null,true);_refresh();_save();};
+  timeSel.onchange=()=>{_refresh();_fillTime();_save();};
+  return {collect:_collect,start:_start};
 }
 let calScale=1.0; // 캘린더 확대/축소 레벨 (0.6~2.5)
 let selDay=(new Date().getDay()+6)%7;
@@ -7595,7 +7652,7 @@ function getGrpMemberAbsences(memberId,gc,month,plan,onlyDeduct){
 }
 // 이 달 출석 표시된(attended) 수
 // 세션에 룸이 배정됐는지(1개 이상). 룸 있어야 '수업 진행'으로 인정
-function grpSessHasRoom(s){return !!(s&&(s.roomId||(s.roomIds&&s.roomIds.length)));}
+function grpSessHasRoom(s){return !!(s&&(s.roomId||(s.roomIds&&s.roomIds.length)||(s.roomSlots&&s.roomSlots.length)));}
 function getGrpMemberAttended(memberId,gc,month,plan){
   return grpMonthSessionDates(gc,month).filter(ds=>{
     if(plan&&!grpPlanActiveOn(plan,ds))return false;
@@ -8602,49 +8659,29 @@ function openGrpSessionModal(gc,date,sess,prefill){
     if(isCancelled){const cTag=box.appendChild(document.createElement('div'));cTag.style.cssText='background:#200d0d;border:1px solid #301515;border-radius:8px;padding:10px 14px;color:#f87171;font-size:13px;margin:8px 0;';cTag.textContent='⚠ 이 수업은 폐강되었습니다.'+(sess.cancelReason?' ('+sess.cancelReason+')':'');}
     // 담당 강사 변경(이 날짜만 대타 / 이 날짜부터 담당 변경)
     if(!isCancelled){
-      // 시간 + 룸(방) — 이 날짜(회차) 기준. 룸 최대 2개 묶음 사용. 사용 중 룸은 선택 불가. 룸 현황에 연동됨
+      // 시간 + 룸(방) — 룸 최대 2개(2개면 룸별 시간대 30분 단위). 룸 현황에 연동됨
       const _cs0=grpSessMap[gc.id+'_'+date];
       const curTime=(_cs0&&_cs0.time)||(prefill&&prefill.time)||gc.time;
       const _grpDur=gc.duration||60,_grpExKey=gc.id+'_'+date;
       const roomWrap=box.appendChild(document.createElement('div'));roomWrap.style.cssText='background:#111318;border:1px solid #1e2026;border-radius:8px;padding:10px 12px;margin:4px 0 10px;';
-      const timeRow=roomWrap.appendChild(document.createElement('div'));timeRow.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
-      timeRow.appendChild(Object.assign(document.createElement('span'),{textContent:'시간'})).style.cssText='font-size:12px;color:#6b7494;white-space:nowrap;';
-      const timeSel=timeRow.appendChild(document.createElement('select'));timeSel.className='pcm-select';timeSel.style.cssText='flex:1;padding:6px 10px;font-size:12px;';
-      roomWrap.appendChild(Object.assign(document.createElement('div'),{textContent:'룸(방) · 최대 2개'})).style.cssText='font-size:12px;color:#6b7494;margin-bottom:6px;';
-      const roomsBox=roomWrap.appendChild(document.createElement('div'));
-      const addBtn=roomWrap.appendChild(document.createElement('button'));addBtn.type='button';addBtn.textContent='+ 룸 추가';
-      addBtn.style.cssText='margin-top:2px;padding:6px 12px;border-radius:7px;border:1px dashed #2a3050;background:transparent;color:#818cf8;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;';
-      const _roomSels=[];
       const roomWarn=box.appendChild(document.createElement('div'));roomWarn.style.cssText='font-size:11px;color:#f87171;font-weight:600;margin:-4px 0 8px;';
-      function _selRooms(){return [...new Set(_roomSels.map(s=>s.value).filter(Boolean))];}
-      function _updGrpWarn(){roomWarn.textContent=_selRooms().length?'':'⚠ 룸 미지정 — 룸을 정하고 출석까지 해야 매출이 발생합니다.';}
-      function _updAddBtn(){addBtn.style.display=(_roomSels.length<2&&roomsSorted().length>_roomSels.length)?'inline-block':'none';}
-      function _refreshRooms(){
-        _roomSels.forEach(sel=>{fillRoomSelect(sel,date,_hm(timeSel.value),_grpDur,sel.value||'',_grpExKey);});
-        _roomSels.forEach((sel,i)=>{const others=_roomSels.filter((_,j)=>j!==i).map(s=>s.value).filter(Boolean);[...sel.options].forEach(o=>{if(o.value&&others.includes(o.value))o.disabled=true;});});
-        _updAddBtn();_updGrpWarn();
+      function _grpInitSlots(){
+        const cs=grpSessMap[_grpExKey]||{};
+        if(cs.roomSlots&&cs.roomSlots.length)return cs.roomSlots;
+        const ids=(cs.roomIds&&cs.roomIds.length)?cs.roomIds:(cs.roomId?[cs.roomId]:((prefill&&prefill.roomId)?[prefill.roomId]:[]));
+        const st=cs.time||(prefill&&prefill.time)||curTime;const en=_mh(Math.min(_hm(st)+_grpDur,1439));
+        return ids.map(rid=>({roomId:rid,start:st,end:en}));
       }
-      function _updTimeByRooms(){fillTimeSelect(timeSel,date,_selRooms()[0]||null,_grpDur,timeSel.value||curTime,_grpExKey);}
-      async function _saveRooms(){
-        if(!checkRoomBlock(date,_hm(timeSel.value),_grpDur)){_refreshRooms();return;}
+      function _grpWarn(n){roomWarn.textContent=n?'':'⚠ 룸 미지정 — 룸을 정하고 출석까지 해야 매출이 발생합니다.';}
+      async function _grpSaveRooms(roomSlots,time){
+        if(!checkRoomBlock(date,_hm(time),_grpDur))return;
         const s=grpSessMap[_grpExKey]||{classId:gc.id,date,status:'active',reservations:[]};
-        s.time=timeSel.value||null;const rids=_selRooms();s.roomIds=rids;s.roomId=rids[0]||null;
-        await svGrpSess(s);_updGrpWarn();renderPcContent();
+        s.time=time||null;s.roomSlots=roomSlots;s.roomIds=roomSlots.map(x=>x.roomId);s.roomId=roomSlots[0]?roomSlots[0].roomId:null;
+        await svGrpSess(s);_grpWarn(roomSlots.length);renderPcContent();
       }
-      function _addRoomRow(val,allowRemove){
-        const row=roomsBox.appendChild(document.createElement('div'));row.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:6px;';
-        const sel=row.appendChild(document.createElement('select'));sel.className='pcm-select';sel.style.cssText='flex:1;min-width:110px;padding:6px 10px;font-size:12px;';
-        _roomSels.push(sel);fillRoomSelect(sel,date,_hm(timeSel.value),_grpDur,val||'',_grpExKey);
-        sel.onchange=()=>{_refreshRooms();_updTimeByRooms();_saveRooms();};
-        if(allowRemove){const rm=row.appendChild(document.createElement('button'));rm.type='button';rm.textContent='×';rm.style.cssText='width:30px;height:32px;border-radius:7px;border:1px solid #2a3050;background:transparent;color:#8892b0;font-size:16px;cursor:pointer;flex-shrink:0;';rm.onclick=()=>{const i=_roomSels.indexOf(sel);if(i>=0)_roomSels.splice(i,1);row.remove();_refreshRooms();_updTimeByRooms();_saveRooms();};}
-      }
-      fillTimeSelect(timeSel,date,null,_grpDur,curTime,_grpExKey);
-      const _initRooms=(_cs0&&_cs0.roomIds&&_cs0.roomIds.length)?_cs0.roomIds.slice():((_cs0&&_cs0.roomId)?[_cs0.roomId]:((prefill&&prefill.roomId)?[prefill.roomId]:[]));
-      if(_initRooms.length){_initRooms.forEach((rid,i)=>_addRoomRow(rid,i>0));}else{_addRoomRow('',false);}
-      _refreshRooms();_updTimeByRooms();
-      addBtn.onclick=()=>{_addRoomRow('',true);_refreshRooms();_saveRooms();};
-      timeSel.onchange=()=>{_refreshRooms();_updTimeByRooms();_saveRooms();};
-      if(prefill&&(prefill.roomId||prefill.time)){(async()=>{if(prefill.time){timeSel.value=prefill.time;_updTimeByRooms();}await _saveRooms();})();}
+      mountRoomAssigner(roomWrap,{date,dur:_grpDur,excludeId:_grpExKey,initTime:curTime,initSlots:_grpInitSlots(),onChange:_grpSaveRooms});
+      _grpWarn(_grpInitSlots().length);
+      if(prefill&&(prefill.roomId||prefill.time)){_grpSaveRooms(_grpInitSlots(),(prefill&&prefill.time)||curTime);}
       const trWrap=box.appendChild(document.createElement('div'));trWrap.style.cssText='background:#111318;border:1px solid #1e2026;border-radius:8px;padding:10px 12px;margin:4px 0 10px;';
       const trTop=trWrap.appendChild(document.createElement('div'));trTop.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px;';
       trTop.appendChild(Object.assign(document.createElement('span'),{textContent:'담당 강사 변경'})).style.cssText='font-size:12px;color:#6b7494;white-space:nowrap;';
@@ -8839,7 +8876,7 @@ function openGrpSessionModal(gc,date,sess,prefill){
       rmBtn.onclick=async()=>{
         if(!confirm('이 룸 배치를 취소할까요?\n수업은 유지되고 룸 현황에서만 빠집니다. (폐강 아님)'))return;
         const s=grpSessMap[gc.id+'_'+date];if(!s){close();renderPcContent();return;}
-        s.roomId=null;s.roomIds=[];s.time=null;
+        s.roomId=null;s.roomIds=[];s.roomSlots=[];s.time=null;
         const emptyNow=!(s.reservations&&s.reservations.length)&&!(s.absentees&&s.absentees.length)&&!s.trainerId&&(s.mainPay==null)&&!s.assistantTrainerId&&(s.assistantPay==null)&&s.status!=='cancelled';
         if(emptyNow){if(s.id&&typeof db!=='undefined'&&db){try{await db.collection('jbog10_gs').doc(s.id).delete();}catch(e){}}delete grpSessMap[gc.id+'_'+date];}
         else{await svGrpSess(s);}
@@ -9672,7 +9709,7 @@ function openPcSlotDetail(slotId){
     function renderInfo(){
       infoCard.innerHTML='';
       const rows=[
-        ['날짜',s.date],['시간',s.time],['룸',roomName(s.roomId)||'-'],['유형',s.type||'-'],
+        ['날짜',s.date],['시간',s.time],['룸',(function(){const sg=roomSlotsOf(s,s.time,slotDurationMin(s));if(!sg.length)return '-';const multi=sg.length>1;return sg.map(x=>roomName(x.roomId)+(multi?' ('+x.start+'~'+x.end+')':'')).join(', ');})()],['유형',s.type||'-'],
         ['강사',tr2?tr2.name:'-'],
         ['회원',(s.members&&s.members.length)?(slotMemberNamesFull(s)+' ('+(s.lessonKind==='trio'?'트리오':'듀엣')+')'):(mb?mb.name+(mb.phone?' · '+mb.phone:''):'-')],
       ];
@@ -9688,6 +9725,27 @@ function openPcSlotDetail(slotId){
       });
     }
     renderInfo();
+
+    // ── 룸(방) 설정 — 수정 안 들어가도 바로 변경. 룸 2개면 룸별 시간대(30분 단위) ──
+    {
+      const rcard=box.appendChild(document.createElement('div'));
+      rcard.style.cssText='background:#0f1117;border:1px solid #1e2026;border-radius:10px;padding:14px 16px;margin-bottom:16px;';
+      rcard.appendChild(Object.assign(document.createElement('div'),{textContent:'룸(방) 설정'})).style.cssText='font-size:12px;font-weight:800;color:#818cf8;margin-bottom:10px;';
+      const rhost=rcard.appendChild(document.createElement('div'));
+      const rwarn=rcard.appendChild(document.createElement('div'));rwarn.style.cssText='font-size:11px;color:#f87171;font-weight:600;margin-top:8px;';
+      const _slotDur=slotDurationMin(s);
+      const _initSlots=roomSlotsOf(s,s.time,_slotDur);
+      function _rw(n){rwarn.textContent=n?'':'⚠ 룸 미지정 — 강사료 정산에는 룸 배정이 필요합니다.';}
+      function _saveRooms(roomSlots,time){
+        if(!checkRoomBlock(s.date,_hm(time),_slotDur))return;
+        s.time=time||s.time;s.roomSlots=roomSlots;s.roomIds=roomSlots.map(x=>x.roomId);s.roomId=roomSlots[0]?roomSlots[0].roomId:null;
+        sv('jbog10_sl',slots);
+        if(s.bkId)updateCrmBk(s.bkId,{date:s.date,time:s.time,type:s.type,planId:s.planId||null,memo:s.memo});
+        _rw(roomSlots.length);renderInfo();renderPcContent();
+      }
+      mountRoomAssigner(rhost,{date:s.date,dur:_slotDur,excludeId:s.id,initTime:s.time,initSlots:_initSlots,onChange:_saveRooms});
+      _rw(_initSlots.length);
+    }
 
     // ── 출석 체크 (개인/듀엣/트리오 레슨) — 그룹수업 출석과 동일 개념 ──
     // 기본은 '미체크'(매출 없음). '출석'을 눌러야 청구·강사료 발생. 미출석은 제외, 미출석이어도 받아야 하면 "미출석 청구".
@@ -9754,14 +9812,10 @@ function openPcSlotDetail(slotId){
       const r3=editForm.appendChild(document.createElement('div'));r3.className='pcm-row2';
       const tyF=r3.appendChild(_f('유형'));const tyS=tyF.appendChild(_sel(['개인레슨 수업','OT','상담','차단'].map(v=>({v,l:v}))));tyS.value=s.type||'개인레슨 수업';
       const trF=r3.appendChild(_f('강사'));const trS=trF.appendChild(_sel([{v:'',l:'선택'},...trainers.map(t=>({v:t.id,l:t.name}))]));if(s.trainerId)trS.value=s.trainerId;
-      // 룸(방) — 사용 중 룸은 선택 불가(자기 일정 제외)
-      const rmF=editForm.appendChild(_f('룸(방)'));const rmS=rmF.appendChild(_sel([]));rmS.style.width='100%';
-      function _refreshEditRooms(){fillRoomSelect(rmS,dtI.value,_hm(tmS.value),slotDurationMin(s),s.roomId||'',s.id);}
-      function _refreshEditTimes(){fillTimeSelect(tmS,dtI.value,rmS.value,slotDurationMin(s),tmS.value,s.id);}
-      _refreshEditRooms();_refreshEditTimes();
-      dtI.addEventListener('change',()=>{_refreshEditRooms();_refreshEditTimes();});
-      tmS.addEventListener('change',_refreshEditRooms);
-      rmS.addEventListener('change',_refreshEditTimes);
+      // 룸(방)은 상세 화면 상단의 '룸(방) 설정'에서 변경 (여기선 날짜/시간/유형/강사/메모만)
+      function _refreshEditTimes(){fillTimeSelect(tmS,dtI.value,s.roomId||null,slotDurationMin(s),tmS.value,s.id);}
+      _refreshEditTimes();
+      dtI.addEventListener('change',_refreshEditTimes);
 
       // 수업권 선택
       if(mb&&(mb.plans||[]).length){
@@ -9776,7 +9830,8 @@ function openPcSlotDetail(slotId){
       const fb=editForm.appendChild(document.createElement('div'));fb.className='pcm-btns';fb.style.marginTop='16px';
       fb.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-sec',textContent:'취소'})).onclick=()=>{editForm.style.display='none';infoCard.style.display='block';editBtn.textContent='수정';};
       fb.appendChild(Object.assign(document.createElement('button'),{className:'pcm-btn-pri',textContent:'저장'})).onclick=()=>{
-        s.date=dtI.value;s.time=tmS.value;s.type=tyS.value;s.trainerId=trS.value;s.memo=meI.value.trim();s.roomId=rmS.value||null;
+        s.date=dtI.value;s.time=tmS.value;s.type=tyS.value;s.trainerId=trS.value;s.memo=meI.value.trim();
+        {const _sl=roomSlotsOf(s,s.time,slotDurationMin(s));if(_sl.length<=1){const en=_mh(Math.min(_hm(s.time)+slotDurationMin(s),1439));s.roomSlots=s.roomId?[{roomId:s.roomId,start:s.time,end:en}]:[];s.roomIds=s.roomId?[s.roomId]:[];}}
         sv('jbog10_sl',slots);
         if(s.bkId)updateCrmBk(s.bkId,{date:s.date,time:s.time,type:s.type,planId:s.planId||null,memo:s.memo});
         editForm.style.display='none';infoCard.style.display='block';editBtn.textContent='수정';
