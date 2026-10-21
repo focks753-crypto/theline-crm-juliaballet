@@ -6700,16 +6700,25 @@ function renderPcSettings(ct,acts){
     if(acts){acts.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn pri',textContent:'+ 직원 추가'})).onclick=()=>openPcAddStaff();}
     const tw=ct.appendChild(Object.assign(document.createElement('div'),{className:'pc-tw'}));const tbl=tw.appendChild(Object.assign(document.createElement('table'),{className:'pc-tbl'}));
     const thead=tbl.appendChild(document.createElement('thead'));const hr=thead.appendChild(document.createElement('tr'));
-    ['이름','직급','연락처','로그인 번호',''].forEach(h=>{hr.appendChild(Object.assign(document.createElement('th'),{textContent:h}));});
+    ['이름','직급','연락처','로그인 번호','','순서'].forEach(h=>{hr.appendChild(Object.assign(document.createElement('th'),{textContent:h}));});
     const tbody=tbl.appendChild(document.createElement('tbody'));
-    trainers.forEach(tr2=>{const col=getTrainerColor(tr2);const row=tbody.appendChild(document.createElement('tr'));
+    ct.appendChild(Object.assign(document.createElement('div'),{textContent:'우측 ≡ 를 드래그해 순서를 바꾸면 로그인 담당자 목록 순서도 함께 바뀝니다.'})).style.cssText='font-size:11px;color:#6b7494;margin-top:8px;';
+    let _dragFrom=null;
+    trainers.forEach((tr2,idx)=>{const col=getTrainerColor(tr2);const row=tbody.appendChild(document.createElement('tr'));
+      row.draggable=true;
+      row.ondragstart=(e)=>{_dragFrom=idx;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',String(idx));}catch(_){}row.style.opacity='0.4';};
+      row.ondragend=()=>{row.style.opacity='';};
+      row.ondragover=(e)=>{e.preventDefault();e.dataTransfer.dropEffect='move';row.style.boxShadow='inset 0 2px 0 #818cf8';};
+      row.ondragleave=()=>{row.style.boxShadow='';};
+      row.ondrop=(e)=>{e.preventDefault();row.style.boxShadow='';let from=_dragFrom;const d=(e.dataTransfer&&e.dataTransfer.getData('text/plain'))||'';if(d!=='')from=parseInt(d);if(from==null||isNaN(from)||from===idx)return;const moved=trainers.splice(from,1)[0];trainers.splice(idx,0,moved);sv('jbog10_tr',trainers);renderPcContent();};
       [{v:'<span style="display:inline-flex;align-items:center;gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:'+col.dot+';"></span>'+tr2.name+'</span>',h:true},{v:tr2.role||'-'},{v:tr2.phone||'-'},{v:tr2.saban||'-'}].forEach(({v,h})=>{const td=document.createElement('td');if(h)td.innerHTML=v;else td.textContent=v;row.appendChild(td);});
       const atd=row.appendChild(document.createElement('td'));
       atd.appendChild(Object.assign(document.createElement('button'),{className:'pc-tbtn',textContent:'수정'})).onclick=()=>openPcEditStaff(tr2.id);
       const delBtn=atd.appendChild(document.createElement('button'));delBtn.style.cssText='padding:6px 10px;border-radius:6px;border:1px solid rgba(248,113,113,.3);background:transparent;color:#f87171;font-size:12px;cursor:pointer;margin-left:6px;';delBtn.textContent='삭제';
       delBtn.onclick=()=>{if(confirm(tr2.name+' 직원을 삭제하시겠습니까?')){trainers=trainers.filter(t=>t.id!==tr2.id);sv('jbog10_tr',trainers);renderPcContent();}};
+      const htd=row.appendChild(document.createElement('td'));const handle=htd.appendChild(document.createElement('span'));handle.textContent='≡';handle.title='드래그해서 순서 변경';handle.style.cssText='cursor:grab;color:#6b7494;font-size:18px;padding:0 8px;user-select:none;';
     });
-    if(!trainers.length){const tr3=tbody.appendChild(document.createElement('tr'));const td=tr3.appendChild(document.createElement('td'));td.colSpan=5;td.style.cssText='text-align:center;padding:32px;color:#2a2d45;';td.textContent='등록된 직원이 없습니다.';}
+    if(!trainers.length){const tr3=tbody.appendChild(document.createElement('tr'));const td=tr3.appendChild(document.createElement('td'));td.colSpan=6;td.style.cssText='text-align:center;padding:32px;color:#2a2d45;';td.textContent='등록된 직원이 없습니다.';}
   } else {
     // 상품 관리
     if(acts){
@@ -7493,8 +7502,8 @@ function openPcStaffModal(tr2, onSave) {
     const nameF = r2.appendChild(_f('이름', true)); const nameI = nameF.appendChild(_inp('이름'));
     if(tr2) nameI.value = tr2.name || '';
     const roleF = r2.appendChild(_f('직급'));
-    const roleI = roleF.appendChild(_sel([{v:'강사',l:'강사'},{v:'관리자',l:'관리자'},{v:'기타',l:'기타'}]));
-    if(tr2 && tr2.role) roleI.value = tr2.role;
+    const roleI = roleF.appendChild(_sel([{v:'강사',l:'강사'},{v:'외부강사',l:'외부강사'},{v:'관리자',l:'관리자'},{v:'기타',l:'기타'}]));
+    if(tr2) roleI.value = tr2.external ? '외부강사' : (tr2.role || '강사');
     const r3 = box.appendChild(document.createElement('div')); r3.className = 'pcm-row2';
     const phoneF = r3.appendChild(_f('연락처')); const phoneI = phoneF.appendChild(_inp('010-'));
     if(tr2) phoneI.value = tr2.phone || ''; phoneI.oninput = function(){this.value = fmtPhone(this.value);};
@@ -7512,11 +7521,10 @@ function openPcStaffModal(tr2, onSave) {
       btn.onclick = () => {selColor = i; colBtns.forEach((b,j) => b.style.borderColor = j===i?'#fff':'transparent');};
       return btn;
     });
-    // 외부강사: 룸 설정 없이 그룹수업 등록만으로 강사료 발생 (가끔 오는 외부 강사)
-    const extF=box.appendChild(document.createElement('div'));extF.style.cssText='margin:6px 0 10px;';
-    const extLab=extF.appendChild(document.createElement('label'));extLab.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#c4cde8;';
-    const extChk=extLab.appendChild(document.createElement('input'));extChk.type='checkbox';extChk.style.cssText='width:16px;height:16px;cursor:pointer;';if(tr2&&tr2.external)extChk.checked=true;
-    extLab.appendChild(Object.assign(document.createElement('span'),{textContent:'외부강사 (룸 설정 없이 그룹수업만으로 강사료 발생)'}));
+    // 외부강사(직급) 안내: 룸 설정 없이 그룹수업 등록만으로 강사료·학생청구 발생
+    const extHint=box.appendChild(document.createElement('div'));extHint.style.cssText='font-size:11px;color:#fbbf24;margin:2px 0 10px;line-height:1.5;';
+    function _updExtHint(){extHint.textContent=roleI.value==='외부강사'?'외부강사: 룸 설정 없이 그룹수업 등록만으로 강사료·학생 청구가 발생합니다.':'';}
+    roleI.addEventListener('change',_updExtHint);_updExtHint();
     // 레슨 강사료 (개인/듀엣/트리오 × 수업시간별 · 회당) — 세션로그에서 (세션 강사 × 레슨종류 × 수업시간)으로 자동 책정
     const DURS=[30,60,90,120,150,180,210];
     const dpF=box.appendChild(_f('레슨 강사료 (개인/듀엣/트리오 · 회당)'));
@@ -7542,13 +7550,13 @@ function openPcStaffModal(tr2, onSave) {
       const _cp=k=>{const o={};DURS.forEach(d=>{const v=parseInt(dpInputs[k][d].value)||0;if(v)o[d]=v;});return o;};
       const durationPay=_cp('solo'),duetPay=_cp('duet'),trioPay=_cp('trio');
       if (tr2) {
-        tr2.name = name; tr2.role = roleI.value.trim(); tr2.phone = phoneI.value.trim(); tr2.color = selColor; tr2.durationPay = durationPay; tr2.duetPay = duetPay; tr2.trioPay = trioPay; tr2.external = extChk.checked;
+        tr2.name = name; tr2.role = roleI.value.trim(); tr2.phone = phoneI.value.trim(); tr2.color = selColor; tr2.durationPay = durationPay; tr2.duetPay = duetPay; tr2.trioPay = trioPay; tr2.external = (roleI.value==='외부강사');
         if (sabanI.value) tr2.saban = sabanI.value;
         sv('jbog10_tr', trainers);
       } else {
         const saban = sabanI.value;
         if (!saban) {alert('로그인 번호를 입력해주세요.'); return;}
-        trainers.push({id:'tr'+Date.now(), name, role:roleI.value.trim(), phone:phoneI.value.trim(), color:selColor, saban, durationPay, duetPay, trioPay, external:extChk.checked});
+        trainers.push({id:'tr'+Date.now(), name, role:roleI.value.trim(), phone:phoneI.value.trim(), color:selColor, saban, durationPay, duetPay, trioPay, external:(roleI.value==='외부강사')});
         sv('jbog10_tr', trainers);
       }
       close(); renderPcContent(); updatePcUser();
@@ -7666,7 +7674,8 @@ function getGrpMemberAttended(memberId,gc,month,plan){
   return grpMonthSessionDates(gc,month).filter(ds=>{
     if(plan&&!grpPlanActiveOn(plan,ds))return false;
     const s=grpSessMap[gc.id+'_'+ds];if(!s||s.status==='cancelled')return false;
-    if(!grpSessHasRoom(s))return false; // 룸 미배정이면 매출/출석 집계 제외 (룸+출석 둘 다 필요)
+    const _extT=!!(trainers.find(t=>t.id===effectiveGrpTrainerId(gc,ds,s))||{}).external;
+    if(!grpSessHasRoom(s)&&!_extT)return false; // 룸 미배정이면 집계 제외 (단 외부강사 수업은 룸 없이도 청구)
     return (s.attended||[]).some(a=>a.memberId===memberId);
   }).length;
 }
